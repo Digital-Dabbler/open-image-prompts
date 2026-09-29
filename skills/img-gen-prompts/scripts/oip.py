@@ -160,6 +160,26 @@ def require_v2(payload: dict[str, Any]) -> None:
 def process_exists(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        # On Windows ``os.kill(pid, 0)`` is not a liveness probe: CPython calls
+        # ``TerminateProcess`` for any signal other than CTRL_C_EVENT, so the
+        # check would kill the very process it is asking about. Query the exit
+        # code through the Win32 API instead.
+        import ctypes
+
+        process_query_limited_information = 0x1000
+        still_active = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
         return True
@@ -351,13 +371,27 @@ def stop_server(repository: Path) -> dict[str, Any]:
     if status.get("status") != "running":
         raise SystemExit("gallery process ownership could not be verified; refusing to send a signal")
     pid = int(status["pid"])
-    os.kill(pid, signal.SIGTERM)
-    deadline = time.monotonic() + 8
-    while time.monotonic() < deadline and process_exists(pid):
-        time.sleep(0.1)
-    if process_exists(pid):
-        # Ownership was verified through the instance-specific health endpoint.
-        os.kill(pid, signal.SIGKILL)
+    if os.name == "nt":
+        # Windows cannot deliver SIGTERM: os.kill() terminates the bridge alone
+        # and leaves its vite and API grandchildren running on their ports. Kill
+        # the verified process tree instead.
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and process_exists(pid):
+            time.sleep(0.1)
+    else:
+        os.kill(pid, signal.SIGTERM)
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and process_exists(pid):
+            time.sleep(0.1)
+        if process_exists(pid):
+            # Ownership was verified through the instance-specific health endpoint.
+            os.kill(pid, signal.SIGKILL)
     with contextlib.suppress(OSError):
         runtime_paths(repository)["pid"].unlink()
     return {"status": "stopped", "pid": pid}

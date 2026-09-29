@@ -71,6 +71,13 @@ def connect_read_only(path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
         timeout=5,
     )
     connection.row_factory = sqlite3.Row
+    # Aggregations over the label tables spill into a temporary file, and SQLite
+    # resolves that directory from the process environment. Where TEMP is unusable
+    # (restricted sandboxes, locked-down service accounts) a healthy read-only
+    # database still fails mid-query with "unable to open database file". Keeping
+    # temporary storage in memory removes that dependency; the archive is small
+    # enough that these sorts stay well within budget.
+    connection.execute("PRAGMA temp_store=MEMORY")
     return connection
 
 
