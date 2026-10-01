@@ -1,9 +1,11 @@
 import { Copy, Play } from '@phosphor-icons/react'
 import { motion } from 'framer-motion'
+import { useState } from 'react'
 import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
-import { firstImageSources } from '../media'
+import { firstImageSources, assetUrl, videoSources } from '../media'
 import SmartImage from './ui/SmartImage'
+import SmartVideo from './ui/SmartVideo'
 
 function excerpt(text, limit = 120) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim()
@@ -21,8 +23,14 @@ function reasonLabel(reason) {
 
 export default function PromptCard({ item, index, onSelect, onCopied }) {
   const { t, locale } = useLang()
+  const [hovering, setHovering] = useState(false)
   const imageCount = item.images?.length || 0
   const hasVideo = Boolean(item.videos?.length)
+  const previewVideo = (item.videos || [])
+    .map((video) => ({ video, sources: videoSources(video) }))
+    .find((entry) => entry.sources.length > 0)
+  const stillSources = firstImageSources(item)
+  const videoPlaying = Boolean(previewVideo) && hovering
   const tool = item.tool && item.tool !== 'None' ? item.tool : null
   const ratio = item._ratio && item._ratio > 0.2 && item._ratio < 5 ? item._ratio : null
   const isRelated = item.session_reference?.match_kind === 'related'
@@ -61,16 +69,51 @@ export default function PromptCard({ item, index, onSelect, onCopied }) {
       <button
         type="button"
         onClick={onSelect}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        onFocus={() => setHovering(true)}
+        onBlur={() => setHovering(false)}
         className="wall-card focus-ring block w-full text-left"
         style={ratio ? { aspectRatio: `${ratio}` } : undefined}
         aria-label={t('card.open', { author: item.author })}
       >
-        <SmartImage
-          sources={firstImageSources(item)}
-          alt={t('card.alt', { author: item.author })}
-          className={`h-full w-full ${ratio ? '' : 'aspect-[4/5]'}`}
-          eager={index < 6}
-        />
+        {stillSources.length > 0 || !previewVideo ? (
+          <SmartImage
+            sources={stillSources}
+            alt={t('card.alt', { author: item.author })}
+            className={`h-full w-full ${ratio ? '' : 'aspect-[4/5]'}`}
+            eager={index < 6}
+          />
+        ) : (
+          // Video-only post: a still placeholder would just say "image
+          // unavailable", so the card face is the video's own first frame.
+          <SmartVideo
+            sources={previewVideo.sources}
+            poster={previewVideo.video.poster ? assetUrl(previewVideo.video.poster) : null}
+            alt={t('card.alt', { author: item.author })}
+            className={`h-full w-full ${ratio ? '' : 'aspect-[4/5]'}`}
+            playing={videoPlaying}
+            loop
+            muted
+            eager={index < 3}
+            fit="cover"
+          />
+        )}
+
+        {previewVideo && stillSources.length > 0 && (
+          <SmartVideo
+            sources={previewVideo.sources}
+            poster={stillSources[0] || null}
+            alt={t('card.alt', { author: item.author })}
+            className={`pointer-events-none absolute inset-0 h-full w-full transition-opacity duration-300 ${
+              videoPlaying ? 'opacity-100' : 'opacity-0'
+            }`}
+            playing={videoPlaying}
+            loop
+            muted
+            fit="cover"
+          />
+        )}
 
         <div className="card-top pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 bg-gradient-to-b from-abyss/70 to-transparent p-2.5 pb-7">
           {tool ? (

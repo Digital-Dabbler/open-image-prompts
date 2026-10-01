@@ -14,6 +14,7 @@ import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
 import { mediaItems } from '../media'
 import SmartImage from './ui/SmartImage'
+import SmartVideo from './ui/SmartVideo'
 
 export default function PromptDialog({ item, position, total, onClose, onStep, onCopied }) {
   const { t, locale } = useLang()
@@ -64,9 +65,9 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
   }, [onClose, onStep])
 
   function mediaLabel(entry, index) {
-    return entry.type === 'video-link'
-      ? t('dialog.media.video', { n: index + 1 })
-      : t('dialog.media.image', { n: index + 1 })
+    return entry.type === 'image'
+      ? t('dialog.media.image', { n: index + 1 })
+      : t('dialog.media.video', { n: index + 1 })
   }
 
   const date = new Date(item.created_at)
@@ -109,7 +110,30 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
         className="relative grid h-[100dvh] w-full grid-rows-[44dvh_minmax(0,1fr)] overflow-hidden bg-canvas md:h-[min(88dvh,860px)] md:max-w-[1280px] md:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.72fr)] md:grid-rows-1 md:rounded-3xl md:border md:border-line md:shadow-[0_48px_140px_-40px_rgba(0,0,0,0.9)]"
       >
         <section className="relative min-h-[44dvh] overflow-hidden bg-abyss md:min-h-0" aria-label="Media">
-          {currentMedia?.type === 'video-link' ? (
+          {currentMedia?.type === 'video' ? (
+            <div className="relative grid h-full w-full place-items-center bg-abyss">
+              <SmartVideo
+                sources={currentMedia.sources}
+                poster={currentMedia.poster}
+                alt={`${mediaLabel(currentMedia, currentIndex)} — @${item.author}`}
+                className="relative h-full w-full"
+                controls
+                loop
+                muted
+                eager
+                fit="contain"
+              />
+              <a
+                href={currentMedia.tweetUrl || item.tweet_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="focus-ring absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-abyss/70 px-3 py-2 text-[11px] font-medium text-white/85 backdrop-blur-md hover:bg-brass hover:text-abyss"
+              >
+                {t('dialog.openVideo')}
+                <ArrowSquareOut size={13} />
+              </a>
+            </div>
+          ) : currentMedia?.type === 'video-link' ? (
             <VideoPreview media={currentMedia} />
           ) : currentMedia ? (
             <>

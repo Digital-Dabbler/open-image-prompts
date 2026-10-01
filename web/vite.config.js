@@ -17,6 +17,10 @@ const CONTENT_TYPES = {
   '.jpg': 'image/jpeg',
   '.png': 'image/png',
   '.webp': 'image/webp',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
 }
 
 function blockPrivateArchive(middlewares) {
@@ -52,9 +56,43 @@ function serveArchiveImages(middlewares) {
     try {
       const file = statSync(filePath)
       if (!file.isFile()) return next()
-      response.setHeader('Content-Type', CONTENT_TYPES[extname(filePath).toLowerCase()] || 'application/octet-stream')
-      response.setHeader('Content-Length', file.size)
+      const contentType = CONTENT_TYPES[extname(filePath).toLowerCase()] || 'application/octet-stream'
+      response.setHeader('Content-Type', contentType)
       response.setHeader('Cache-Control', 'public, max-age=3600')
+      // Video needs byte ranges: without 206 responses the browser cannot seek
+      // (and Safari refuses to play at all).
+      const range = request.headers.range
+      const rangeMatch = typeof range === 'string' ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null
+      if (rangeMatch) {
+        const [, rawStart, rawEnd] = rangeMatch
+        let start = rawStart === '' ? null : Number(rawStart)
+        let end = rawEnd === '' ? null : Number(rawEnd)
+        if (start === null && end !== null) {
+          start = Math.max(file.size - end, 0)
+          end = file.size - 1
+        } else {
+          start = start ?? 0
+          end = end === null ? file.size - 1 : Math.min(end, file.size - 1)
+        }
+        if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= file.size) {
+          response.statusCode = 416
+          response.setHeader('Content-Range', `bytes */${file.size}`)
+          response.end()
+          return
+        }
+        response.statusCode = 206
+        response.setHeader('Accept-Ranges', 'bytes')
+        response.setHeader('Content-Range', `bytes ${start}-${end}/${file.size}`)
+        response.setHeader('Content-Length', end - start + 1)
+        if (request.method === 'HEAD') {
+          response.end()
+          return
+        }
+        createReadStream(filePath, { start, end }).pipe(response)
+        return
+      }
+      response.setHeader('Accept-Ranges', 'bytes')
+      response.setHeader('Content-Length', file.size)
       if (request.method === 'HEAD') {
         response.end()
         return

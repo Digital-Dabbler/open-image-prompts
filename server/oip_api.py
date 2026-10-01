@@ -23,6 +23,7 @@ from runtime.archive_db import (
     active_taxonomy_version,
     connect_read_only,
     ensure_working_database,
+    table_exists,
 )
 
 DB_PATH = Path(os.environ.get("OIP_DB_PATH", DEFAULT_DB_PATH))
@@ -133,6 +134,27 @@ def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str) ->
             (tweet_id,),
         )
     ]
+    videos = []
+    if table_exists(connection, "videos"):
+        video_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(videos)")
+        }
+        poster_select = "poster_path" if "poster_path" in video_columns else "NULL"
+        videos = [
+            {
+                "id": str(video["id"]),
+                "index": video["video_index"],
+                "url": video["url"] or None,
+                "local": video["local_path"] or None,
+                "poster": video["poster_path"] or None,
+            }
+            for video in connection.execute(
+                "SELECT id,video_index,url,local_path,"
+                + poster_select
+                + " AS poster_path FROM videos WHERE tweet_id=? ORDER BY video_index",
+                (tweet_id,),
+            )
+        ]
     translations = {
         entry["locale"]: entry["translated_text"]
         for entry in connection.execute(
@@ -150,7 +172,7 @@ def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str) ->
         "tweet_url": row["tweet_url"],
         "collected_at": row["collected_at"],
         "images": images,
-        "videos": [],
+        "videos": videos,
         # Tag filtering and labels come from /api/catalog. Keeping the large
         # per-prompt evidence payload out makes the first gallery page smaller.
         "tags": {},
@@ -200,6 +222,11 @@ def catalog(connection: sqlite3.Connection, taxonomy: str) -> dict:
     stats = {
         "prompts": connection.execute("SELECT COUNT(*) FROM prompts").fetchone()[0],
         "images": connection.execute("SELECT COUNT(*) FROM images").fetchone()[0],
+        "videos": (
+            connection.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
+            if table_exists(connection, "videos")
+            else 0
+        ),
         "authors": len(authors),
         "tools": len(tools),
     }
