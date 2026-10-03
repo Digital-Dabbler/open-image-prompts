@@ -76,6 +76,12 @@ def prompt_parameters(query: dict[str, list[str]]) -> dict:
     if ids and (offset or text or tool or author or tag):
         raise ValueError("ids cannot be combined with offset or archive filters")
     sort = "oldest" if query.get("sort", ["newest"])[0] == "oldest" else "newest"
+    # Readers only ever display one translation locale, so shipping both roughly
+    # doubles the response for no gain. "en" readers read the source prompt
+    # itself, so no translation is needed at all.
+    lang = query.get("lang", [""])[0].strip().lower()
+    if lang not in {"", "zh", "en"}:
+        raise ValueError("lang must be zh or en")
     return {
         "limit": limit,
         "offset": offset,
@@ -85,6 +91,7 @@ def prompt_parameters(query: dict[str, list[str]]) -> dict:
         "tag": tag,
         "ids": ids,
         "sort": sort,
+        "lang": lang,
     }
 
 
@@ -98,6 +105,7 @@ def prompt_cache_key(parameters: dict) -> tuple:
         parameters["author"],
         parameters["tag"],
         parameters["ids"],
+        parameters["lang"],
     )
 
 
@@ -119,7 +127,7 @@ def prompt_cache_put(key: tuple, data: bytes) -> None:
             _prompt_cache.popitem(last=False)
 
 
-def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str) -> dict:
+def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str, lang: str = "") -> dict:
     tweet_id = str(row["tweet_id"])
     images = [
         {
@@ -155,13 +163,28 @@ def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str) ->
                 (tweet_id,),
             )
         ]
-    translations = {
-        entry["locale"]: entry["translated_text"]
-        for entry in connection.execute(
-            "SELECT locale,translated_text FROM prompt_translations WHERE tweet_id=? AND translation_version=?",
-            (tweet_id, taxonomy),
-        )
-    }
+    translations: dict[str, str] = {}
+    if lang != "en":
+        # "zh" ships only the Simplified-Chinese reading translation; "en"
+        # readers get prompt_text itself and need no translation payload.
+        locale = "zh-Hans" if lang == "zh" else ""
+        if locale:
+            translations = {
+                entry["locale"]: entry["translated_text"]
+                for entry in connection.execute(
+                    "SELECT locale,translated_text FROM prompt_translations"
+                    " WHERE tweet_id=? AND translation_version=? AND locale=?",
+                    (tweet_id, taxonomy, locale),
+                )
+            }
+        else:
+            translations = {
+                entry["locale"]: entry["translated_text"]
+                for entry in connection.execute(
+                    "SELECT locale,translated_text FROM prompt_translations WHERE tweet_id=? AND translation_version=?",
+                    (tweet_id, taxonomy),
+                )
+            }
     return {
         "tweet_id": tweet_id,
         "author": row["author"],
@@ -385,7 +408,7 @@ class Handler(BaseHTTPRequestHandler):
             return json.dumps(
                 {
                     "items": [
-                        item_for(connection, row, taxonomy)
+                        item_for(connection, row, taxonomy, parameters["lang"])
                         for row in ordered_rows[:limit]
                     ],
                     "total": len(ordered_rows),
@@ -446,7 +469,7 @@ class Handler(BaseHTTPRequestHandler):
         ).fetchall()
         return json.dumps(
             {
-                "items": [item_for(connection, row, taxonomy) for row in rows],
+                "items": [item_for(connection, row, taxonomy, parameters["lang"]) for row in rows],
                 "total": total,
                 "offset": offset,
                 "limit": limit,

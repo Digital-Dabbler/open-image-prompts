@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -144,6 +145,29 @@ def main() -> int:
         tagged = fetch_json(f"{base}/api/prompts?{tagged_query}")
         assert tagged["total"] > 0
         assert len(tagged["items"]) == 2
+
+        # Locale-scoped payloads: readers only ever show one translation, so a zh
+        # page ships just the reading translation, an en page ships none, and the
+        # default response (no lang) stays backwards compatible with both.
+        zh_page = fetch_json(f"{base}/api/prompts?limit=6&offset=0&lang=zh")
+        en_page = fetch_json(f"{base}/api/prompts?limit=6&offset=0&lang=en")
+        both_page = fetch_json(f"{base}/api/prompts?limit=6&offset=0")
+        assert [item["tweet_id"] for item in zh_page["items"]] == [
+            item["tweet_id"] for item in en_page["items"]
+        ] == [item["tweet_id"] for item in both_page["items"]]
+        assert {locale for item in zh_page["items"] for locale in item["translations"]} <= {"zh-Hans"}
+        assert any(item["translations"] for item in zh_page["items"])
+        assert all(not item["translations"] for item in en_page["items"])
+        assert any(item["translations"] for item in both_page["items"])
+        assert len(json.dumps(zh_page)) < len(json.dumps(both_page))
+        assert len(json.dumps(en_page)) < len(json.dumps(zh_page))
+        try:
+            fetch_json(f"{base}/api/prompts?limit=1&lang=fr")
+        except urllib.error.HTTPError as error:
+            assert error.code == 400
+        else:
+            raise AssertionError("an unsupported lang was accepted")
+
         health = fetch_json(f"{base}/health")
         assert health["query_concurrency"] >= 1
         assert health["cache_entries"] <= 4

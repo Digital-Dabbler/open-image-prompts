@@ -105,6 +105,7 @@ function App() {
         <PromptGallery
           items={archive.visibleItems}
           loading={archive.loading}
+          loadingMore={archive.loadingMore}
           error={archive.error}
           hasMore={archive.hasMore}
           onLoadMore={archive.loadMore}
