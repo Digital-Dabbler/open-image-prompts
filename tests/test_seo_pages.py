@@ -165,6 +165,13 @@ class SeoPageTests(unittest.TestCase):
     def test_generator_succeeds(self) -> None:
         self.assertIn("written", self.run_generator().stdout)
 
+    def test_pages_carry_the_analytics_tag(self) -> None:
+        # Organic landings arrive on the pre-rendered pages, never on the SPA
+        # shell, so the measurement tag has to be baked into every page.
+        page = self.read("p/1001/index.html")
+        self.assertIn("googletagmanager.com/gtag/js?id=G-", page)
+        self.assertIn("gtag('config','G-", page)
+
     def test_detail_page_carries_both_languages_and_provenance(self) -> None:
         page = self.read("p/1001/index.html")
         self.assertIn("lang=\"en\"", page)          # byte-for-byte original

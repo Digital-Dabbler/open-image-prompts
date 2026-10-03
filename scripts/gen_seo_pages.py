@@ -61,6 +61,17 @@ TAXONOMY = os.getenv("OIP_SEO_TAXONOMY", "oip-visual-v2")
 IMAGE_BASE = os.getenv("OIP_SEO_IMAGE_BASE", "").rstrip("/")
 VIDEO_BASE = os.getenv("OIP_SEO_VIDEO_BASE", SITE).rstrip("/")
 
+# GA4 property for this site ("Open Image Prompts"). Every pre-rendered page
+# carries the tag, because organic landings happen here and never touch the SPA
+# shell; an empty value disables the snippet (offline previews, unit tests).
+ANALYTICS_ID = os.getenv("OIP_SEO_GA_ID", "G-H9CYPC6TR8").strip()
+ANALYTICS_SNIPPET = "" if not ANALYTICS_ID else (
+    f'<script async src="https://www.googletagmanager.com/gtag/js?id={ANALYTICS_ID}"></script>\n'
+    "<script>window.dataLayer=window.dataLayer||[];"
+    "function gtag(){dataLayer.push(arguments)}gtag('js',new Date());"
+    f"gtag('config','{ANALYTICS_ID}');</script>"
+)
+
 PAGE_SIZE = 48
 SITEMAP_CHUNK = 45000
 # Indexability gates: a page earns an index entry only when it carries a real
@@ -393,6 +404,7 @@ def heading_for(record: dict) -> str:
 def layout(*, lang: str, title: str, description: str, canonical: str, body: str,
            structured: str, robots: str = "") -> str:
     robots_meta = f'<meta name="robots" content="{esc(robots)}">' if robots else ""
+    analytics = ANALYTICS_SNIPPET
     return f"""<!doctype html>
 <html lang="{esc(lang)}">
 <head>
@@ -408,6 +420,7 @@ def layout(*, lang: str, title: str, description: str, canonical: str, body: str
 <meta property="og:url" content="{esc(canonical)}">
 <style>{CSS}</style>
 <script type="application/ld+json">{structured}</script>
+{analytics}
 </head>
 <body>
 <main>
