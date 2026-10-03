@@ -33,7 +33,22 @@ API_PORT = int(os.environ.get("OIP_API_PORT", "8787"))
 QUERY_CONCURRENCY = max(1, int(os.environ.get("OIP_API_QUERY_CONCURRENCY", "4")))
 QUERY_WAIT_SECONDS = max(0.1, float(os.environ.get("OIP_API_QUERY_WAIT_SECONDS", "3")))
 PROMPT_CACHE_ENTRIES = max(0, int(os.environ.get("OIP_API_CACHE_ENTRIES", "128")))
+# Absolute base for self-hosted media. The archive keeps relative paths in its
+# database (`images/<tweet_id>/<n>.jpg`); once those bytes live on the R2 bucket
+# behind media.openimages.relakkesyang.org the API hands out absolute URLs so
+# every client (SPA, crawlers, embeds) reads from the CDN instead of X.
+MEDIA_BASE = os.environ.get("OIP_MEDIA_BASE", "").rstrip("/")
 MAX_PAGE_SIZE = 60
+
+
+def media_ref(path: str | None) -> str | None:
+    if not path:
+        return None
+    if not MEDIA_BASE or path.startswith(("http://", "https://")):
+        return path
+    return f"{MEDIA_BASE}/{path.lstrip('/')}"
+
+
 _catalog_cache: dict | None = None
 _catalog_lock = Lock()
 _query_slots = BoundedSemaphore(QUERY_CONCURRENCY)
@@ -134,7 +149,7 @@ def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str, la
             "id": str(image["id"]),
             "index": image["image_index"],
             "url": image["url"],
-            "local": image["local_path"] or None,
+            "local": media_ref(image["local_path"]),
             "tags": {},
         }
         for image in connection.execute(
@@ -153,8 +168,8 @@ def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str, la
                 "id": str(video["id"]),
                 "index": video["video_index"],
                 "url": video["url"] or None,
-                "local": video["local_path"] or None,
-                "poster": video["poster_path"] or None,
+                "local": media_ref(video["local_path"]),
+                "poster": media_ref(video["poster_path"]),
             }
             for video in connection.execute(
                 "SELECT id,video_index,url,local_path,"

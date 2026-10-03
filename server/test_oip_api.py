@@ -65,6 +65,9 @@ def main() -> int:
     environment = os.environ.copy()
     environment["OIP_API_PORT"] = str(port)
     environment["OIP_API_CACHE_ENTRIES"] = "4"
+    # Media hosting: relative archive paths must come back as absolute CDN URLs
+    # so the SPA, the pre-rendered pages and crawlers all read from one origin.
+    environment["OIP_MEDIA_BASE"] = "https://media.example.test"
     process = subprocess.Popen(
         [sys.executable, str(REPOSITORY_ROOT / "server/oip_api.py")],
         cwd=REPOSITORY_ROOT,
@@ -171,6 +174,23 @@ def main() -> int:
         health = fetch_json(f"{base}/health")
         assert health["query_concurrency"] >= 1
         assert health["cache_entries"] <= 4
+
+        with_media = [
+            entry
+            for item in first["items"]
+            for entry in (item["images"] + item["videos"])
+            if entry.get("local") or entry.get("poster")
+        ]
+        assert with_media, "no self-hosted media in the sampled page"
+        assert all(
+            (entry.get("local") or entry.get("poster")).startswith("https://media.example.test/")
+            for entry in with_media
+        )
+        assert all(
+            entry.get("url") is None or entry["url"].startswith("http")
+            for item in first["items"]
+            for entry in item["images"] + item["videos"]
+        )
         print("Read-only SQLite API test OK")
         return 0
     finally:
