@@ -16,3 +16,6 @@ db/*.lock
 # Dataset assets come from GitHub Releases via scripts/fetch_dataset.py
 images/
 db/prompts.db.gz
+
+# Cloudflare R2 credentials live outside the repo; never commit a copy.
+**/r2.env

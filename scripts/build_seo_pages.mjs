@@ -21,13 +21,15 @@ const generator = resolve(repositoryRoot, 'scripts', 'gen_seo_pages.py')
 const outDir = process.env.OIP_SEO_OUT || '/var/www/oip-pages'
 const site = (process.env.OIP_SEO_SITE || 'https://openimages.relakkesyang.org').replace(/\/$/, '')
 
-// The IndexNow key is whatever `<32 hex>.txt` file the build published, so the
+// The IndexNow key is whatever `<hex>.txt` file the build published, so the
 // key lives in git next to robots.txt and nothing has to configure it.
+// IndexNow accepts 8-128 hex characters, so do not assume a 32-char UUID: a
+// stricter pattern silently skipped every submission for a 40-char key.
 function indexNowKey() {
   if (process.env.OIP_INDEXNOW_KEY) return process.env.OIP_INDEXNOW_KEY
   const publicDir = resolve(repositoryRoot, 'web', 'public')
   try {
-    const candidate = readdirSync(publicDir).find((name) => /^[0-9a-f]{32}\.txt$/.test(name))
+    const candidate = readdirSync(publicDir).find((name) => /^[0-9a-f]{8,128}\.txt$/.test(name))
     return candidate ? candidate.replace(/\.txt$/, '') : null
   } catch {
     return null
@@ -35,24 +37,34 @@ function indexNowKey() {
 }
 
 async function submitToIndexNow(directory) {
-  if (process.env.OIP_INDEXNOW === '0') return
-  const key = indexNowKey()
-  if (!key) return
-  let changed = []
   try {
-    changed = JSON.parse(readFileSync(resolve(directory, '.seo-changed.json'), 'utf8')).urls || []
-  } catch {
-    return
-  }
-  if (!changed.length) return
-  const host = new URL(site).host
-  const body = JSON.stringify({
-    host,
-    key,
-    keyLocation: `${site}/${key}.txt`,
-    urlList: changed.slice(0, 10000),
-  })
-  try {
+    if (process.env.OIP_INDEXNOW === '0') {
+      console.log('seo-pages: IndexNow disabled by OIP_INDEXNOW=0')
+      return
+    }
+    const key = indexNowKey()
+    if (!key) {
+      console.warn('seo-pages: no IndexNow key file in web/public; skipping submission')
+      return
+    }
+    let changed = []
+    try {
+      changed = JSON.parse(readFileSync(resolve(directory, '.seo-changed.json'), 'utf8')).urls || []
+    } catch {
+      console.log('seo-pages: no .seo-changed.json sidecar; nothing to submit')
+      return
+    }
+    if (!changed.length) {
+      console.log('seo-pages: no changed URLs this run; nothing to submit')
+      return
+    }
+    const host = new URL(site).host
+    const body = JSON.stringify({
+      host,
+      key,
+      keyLocation: `${site}/${key}.txt`,
+      urlList: changed.slice(0, 10000),
+    })
     const response = await fetch('https://api.indexnow.org/indexnow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
