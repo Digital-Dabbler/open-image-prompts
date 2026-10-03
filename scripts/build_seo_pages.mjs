@@ -12,13 +12,57 @@
 //                             never blocks shipping the app itself
 //   * broken output        -> the generator keeps the previous page tree intact
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const generator = resolve(repositoryRoot, 'scripts', 'gen_seo_pages.py')
 const outDir = process.env.OIP_SEO_OUT || '/var/www/oip-pages'
+const site = (process.env.OIP_SEO_SITE || 'https://openimages.relakkesyang.org').replace(/\/$/, '')
+
+// The IndexNow key is whatever `<32 hex>.txt` file the build published, so the
+// key lives in git next to robots.txt and nothing has to configure it.
+function indexNowKey() {
+  if (process.env.OIP_INDEXNOW_KEY) return process.env.OIP_INDEXNOW_KEY
+  const publicDir = resolve(repositoryRoot, 'web', 'public')
+  try {
+    const candidate = readdirSync(publicDir).find((name) => /^[0-9a-f]{32}\.txt$/.test(name))
+    return candidate ? candidate.replace(/\.txt$/, '') : null
+  } catch {
+    return null
+  }
+}
+
+async function submitToIndexNow(directory) {
+  if (process.env.OIP_INDEXNOW === '0') return
+  const key = indexNowKey()
+  if (!key) return
+  let changed = []
+  try {
+    changed = JSON.parse(readFileSync(resolve(directory, '.seo-changed.json'), 'utf8')).urls || []
+  } catch {
+    return
+  }
+  if (!changed.length) return
+  const host = new URL(site).host
+  const body = JSON.stringify({
+    host,
+    key,
+    keyLocation: `${site}/${key}.txt`,
+    urlList: changed.slice(0, 10000),
+  })
+  try {
+    const response = await fetch('https://api.indexnow.org/indexnow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body,
+    })
+    console.log(`seo-pages: submitted ${changed.length} URL(s) to IndexNow (HTTP ${response.status})`)
+  } catch (error) {
+    console.warn(`seo-pages: IndexNow submission failed: ${error.message}`)
+  }
+}
 
 function newestStagedDatabase() {
   const stateDir = '/var/lib/open-image-prompts'
@@ -72,4 +116,9 @@ if (result.status !== 0) {
   console.warn(`seo-pages: generation failed (exit ${result.status}); keeping the previous page tree`)
   process.exit(process.env.OIP_SEO_STRICT === '1' ? result.status : 0)
 }
+
+// Ping IndexNow for the pages this run actually wrote. Bing/Yandex/Seznam consume
+// it; Google does not, and instead picks pages up through the sitemap. The key is
+// public by design: it is the file we serve at /<key>.txt.
+await submitToIndexNow(outDir)
 process.exit(0)

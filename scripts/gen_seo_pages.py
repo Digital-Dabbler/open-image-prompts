@@ -72,6 +72,8 @@ MIN_TOOL_COUNT = int(os.getenv("OIP_SEO_MIN_TOOL_COUNT", "20"))
 MIN_AUTHOR_COUNT = int(os.getenv("OIP_SEO_MIN_AUTHOR_COUNT", "5"))
 INDEX_LIMIT = int(os.getenv("OIP_SEO_INDEX_LIMIT", "4000"))
 MANIFEST_NAME = ".seo-manifest.json"
+# Newly written indexable URLs, consumed by scripts/build_seo_pages.mjs for IndexNow.
+CHANGE_FILE = ".seo-changed.json"
 
 TRUST_PAGES = {
     "about": (
@@ -731,20 +733,22 @@ class Writer:
         except (OSError, ValueError):
             self.manifest = {}
 
-    def add(self, relative: str, content: str) -> None:
+    def add(self, relative: str, content: str) -> bool:
+        """Write one file. Returns True when its content actually changed."""
         digest = sha256_text(content)
         self.written.add(relative)
         if self.manifest.get(relative) == digest:
             self.stats["unchanged"] += 1
-            return
+            return False
         self.manifest[relative] = digest
         self.stats["written"] += 1
         self.stats["bytes"] += len(content.encode("utf-8"))
         if self.dry_run:
-            return
+            return True
         target = self.out / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+        return True
 
     def prune(self) -> None:
         for relative in sorted(set(self.manifest) - self.written):
@@ -786,7 +790,8 @@ def sitemap_chunks(entries: list[tuple[str, str]]) -> list[str]:
 
 
 def write_hub(writer: Writer, *, slug_path: str, heading: str, intro: str, tweet_ids: list[str],
-              dataset: Dataset, index_ok: bool, extra_links=None) -> int:
+              dataset: Dataset, index_ok: bool, extra_links=None,
+              changed_urls: list[str] | None = None) -> int:
     total = len(tweet_ids)
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     indexed = 0
@@ -800,7 +805,8 @@ def write_hub(writer: Writer, *, slug_path: str, heading: str, intro: str, tweet
         if not records:
             continue
         path = f"/{slug_path}/" if page == 1 else f"/{slug_path}/page/{page}/"
-        writer.add(
+        issubmitted = index_ok and page <= 10
+        changed = writer.add(
             path.strip("/") + "/index.html",
             hub_page(
                 heading=heading,
@@ -810,12 +816,14 @@ def write_hub(writer: Writer, *, slug_path: str, heading: str, intro: str, tweet
                 dataset=dataset,
                 total=total,
                 page=page,
-                index_ok=index_ok and page <= 10,
+                index_ok=issubmitted,
                 extra_links=extra_links if page == 1 else None,
             ),
         )
-        if index_ok and page <= 10:
+        if issubmitted:
             indexed += 1
+            if changed and changed_urls is not None:
+                changed_urls.append(f"{SITE}{path}")
     return indexed
 
 
@@ -851,6 +859,7 @@ def main() -> int:
 
     sitemap_entries: list[tuple[str, str]] = []
     indexable_count = 0
+    changed_urls: list[str] = []
     if not args.skip_detail:
         for start in range(0, len(order), dataset.chunk):
             batch = order[start : start + dataset.chunk]
@@ -865,11 +874,13 @@ def main() -> int:
                     indexable_count += 1
                 else:
                     index_ok = False
-                writer.add(f"p/{tweet_id}/index.html", render_detail(record, dataset, index_ok))
+                changed = writer.add(f"p/{tweet_id}/index.html", render_detail(record, dataset, index_ok))
                 if index_ok:
                     sitemap_entries.append(
                         (f"{SITE}/p/{tweet_id}/", (record["collected_at"] or record["created_at"] or "")[:10])
                     )
+                    if changed:
+                        changed_urls.append(f"{SITE}/p/{tweet_id}/")
 
     # -- hubs ------------------------------------------------------------
     hub_entries: list[tuple[str, str]] = []
@@ -890,6 +901,7 @@ def main() -> int:
                 (landing_tool, f"/tool/{slugify(landing_tool)}/")
                 for _, landing_tool in landings[:8]
             ],
+            changed_urls=changed_urls,
         )
         if pages:
             hub_entries.append((f"{SITE}/{slug_path}/", started.strftime("%Y-%m-%d")))
@@ -907,6 +919,7 @@ def main() -> int:
             tweet_ids=[tweet_id for tweet_id in order if dataset.author_of.get(tweet_id) == author],
             dataset=dataset,
             index_ok=count >= 20,
+            changed_urls=changed_urls,
         )
         if pages and count >= 20:
             hub_entries.append((f"{SITE}/{slug_path}/", started.strftime("%Y-%m-%d")))
@@ -921,6 +934,7 @@ def main() -> int:
             tweet_ids=[tweet_id for tweet_id in order if (dimension, tag) in dataset.tags_of.get(tweet_id, [])],
             dataset=dataset,
             index_ok=count >= 20,
+            changed_urls=changed_urls,
         )
         if pages:
             hub_entries.append((f"{SITE}/{slug_path}/", started.strftime("%Y-%m-%d")))
@@ -966,6 +980,21 @@ def main() -> int:
     )
     writer.prune()
     writer.save()
+    if not args.dry_run:
+        # Sidecar for IndexNow: only pages that changed in this run and are meant
+        # to be indexed, so a re-deploy does not resubmit the whole corpus.
+        (args.out / CHANGE_FILE).write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "urls": changed_urls[:9000],
+                },
+                ensure_ascii=False,
+                indent=0,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     connection.close()
 
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
