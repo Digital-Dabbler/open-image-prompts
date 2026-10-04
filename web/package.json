@@ -10,10 +10,12 @@
     "dev": "node scripts/with_api.mjs dev",
     "dev:web": "vite",
     "api": "node ../scripts/run_python.mjs ../server/oip_api.py",
-    "test": "npm run test:search && npm run test:gallery",
+    "test": "npm run test:search && npm run test:gallery && npm run test:media",
     "test:search": "node --test scripts/test_search_state.mjs",
     "test:gallery": "node --test scripts/test_gallery_session.mjs",
+    "test:media": "node --test scripts/test_media_sources.mjs",
     "build": "vite build",
+    "postbuild": "node ../scripts/build_seo_pages.mjs",
     "lint": "eslint .",
     "preview": "node scripts/with_api.mjs preview"
   },

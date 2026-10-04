@@ -23,6 +23,7 @@ from runtime.archive_db import (
     active_taxonomy_version,
     connect_read_only,
     ensure_working_database,
+    table_exists,
 )
 
 DB_PATH = Path(os.environ.get("OIP_DB_PATH", DEFAULT_DB_PATH))
@@ -32,7 +33,22 @@ API_PORT = int(os.environ.get("OIP_API_PORT", "8787"))
 QUERY_CONCURRENCY = max(1, int(os.environ.get("OIP_API_QUERY_CONCURRENCY", "4")))
 QUERY_WAIT_SECONDS = max(0.1, float(os.environ.get("OIP_API_QUERY_WAIT_SECONDS", "3")))
 PROMPT_CACHE_ENTRIES = max(0, int(os.environ.get("OIP_API_CACHE_ENTRIES", "128")))
+# Absolute base for self-hosted media. The archive keeps relative paths in its
+# database (`images/<tweet_id>/<n>.jpg`); once those bytes live on the R2 bucket
+# behind media.openimages.relakkesyang.org the API hands out absolute URLs so
+# every client (SPA, crawlers, embeds) reads from the CDN instead of X.
+MEDIA_BASE = os.environ.get("OIP_MEDIA_BASE", "").rstrip("/")
 MAX_PAGE_SIZE = 60
+
+
+def media_ref(path: str | None) -> str | None:
+    if not path:
+        return None
+    if not MEDIA_BASE or path.startswith(("http://", "https://")):
+        return path
+    return f"{MEDIA_BASE}/{path.lstrip('/')}"
+
+
 _catalog_cache: dict | None = None
 _catalog_lock = Lock()
 _query_slots = BoundedSemaphore(QUERY_CONCURRENCY)
@@ -75,6 +91,12 @@ def prompt_parameters(query: dict[str, list[str]]) -> dict:
     if ids and (offset or text or tool or author or tag):
         raise ValueError("ids cannot be combined with offset or archive filters")
     sort = "oldest" if query.get("sort", ["newest"])[0] == "oldest" else "newest"
+    # Readers only ever display one translation locale, so shipping both roughly
+    # doubles the response for no gain. "en" readers read the source prompt
+    # itself, so no translation is needed at all.
+    lang = query.get("lang", [""])[0].strip().lower()
+    if lang not in {"", "zh", "en"}:
+        raise ValueError("lang must be zh or en")
     return {
         "limit": limit,
         "offset": offset,
@@ -84,6 +106,7 @@ def prompt_parameters(query: dict[str, list[str]]) -> dict:
         "tag": tag,
         "ids": ids,
         "sort": sort,
+        "lang": lang,
     }
 
 
@@ -97,6 +120,7 @@ def prompt_cache_key(parameters: dict) -> tuple:
         parameters["author"],
         parameters["tag"],
         parameters["ids"],
+        parameters["lang"],
     )
 
 
@@ -118,14 +142,14 @@ def prompt_cache_put(key: tuple, data: bytes) -> None:
             _prompt_cache.popitem(last=False)
 
 
-def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str) -> dict:
+def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str, lang: str = "") -> dict:
     tweet_id = str(row["tweet_id"])
     images = [
         {
             "id": str(image["id"]),
             "index": image["image_index"],
             "url": image["url"],
-            "local": image["local_path"] or None,
+            "local": media_ref(image["local_path"]),
             "tags": {},
         }
         for image in connection.execute(
@@ -133,13 +157,49 @@ def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str) ->
             (tweet_id,),
         )
     ]
-    translations = {
-        entry["locale"]: entry["translated_text"]
-        for entry in connection.execute(
-            "SELECT locale,translated_text FROM prompt_translations WHERE tweet_id=? AND translation_version=?",
-            (tweet_id, taxonomy),
-        )
-    }
+    videos = []
+    if table_exists(connection, "videos"):
+        video_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(videos)")
+        }
+        poster_select = "poster_path" if "poster_path" in video_columns else "NULL"
+        videos = [
+            {
+                "id": str(video["id"]),
+                "index": video["video_index"],
+                "url": video["url"] or None,
+                "local": media_ref(video["local_path"]),
+                "poster": media_ref(video["poster_path"]),
+            }
+            for video in connection.execute(
+                "SELECT id,video_index,url,local_path,"
+                + poster_select
+                + " AS poster_path FROM videos WHERE tweet_id=? ORDER BY video_index",
+                (tweet_id,),
+            )
+        ]
+    translations: dict[str, str] = {}
+    if lang != "en":
+        # "zh" ships only the Simplified-Chinese reading translation; "en"
+        # readers get prompt_text itself and need no translation payload.
+        locale = "zh-Hans" if lang == "zh" else ""
+        if locale:
+            translations = {
+                entry["locale"]: entry["translated_text"]
+                for entry in connection.execute(
+                    "SELECT locale,translated_text FROM prompt_translations"
+                    " WHERE tweet_id=? AND translation_version=? AND locale=?",
+                    (tweet_id, taxonomy, locale),
+                )
+            }
+        else:
+            translations = {
+                entry["locale"]: entry["translated_text"]
+                for entry in connection.execute(
+                    "SELECT locale,translated_text FROM prompt_translations WHERE tweet_id=? AND translation_version=?",
+                    (tweet_id, taxonomy),
+                )
+            }
     return {
         "tweet_id": tweet_id,
         "author": row["author"],
@@ -150,7 +210,7 @@ def item_for(connection: sqlite3.Connection, row: sqlite3.Row, taxonomy: str) ->
         "tweet_url": row["tweet_url"],
         "collected_at": row["collected_at"],
         "images": images,
-        "videos": [],
+        "videos": videos,
         # Tag filtering and labels come from /api/catalog. Keeping the large
         # per-prompt evidence payload out makes the first gallery page smaller.
         "tags": {},
@@ -200,6 +260,11 @@ def catalog(connection: sqlite3.Connection, taxonomy: str) -> dict:
     stats = {
         "prompts": connection.execute("SELECT COUNT(*) FROM prompts").fetchone()[0],
         "images": connection.execute("SELECT COUNT(*) FROM images").fetchone()[0],
+        "videos": (
+            connection.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
+            if table_exists(connection, "videos")
+            else 0
+        ),
         "authors": len(authors),
         "tools": len(tools),
     }
@@ -358,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
             return json.dumps(
                 {
                     "items": [
-                        item_for(connection, row, taxonomy)
+                        item_for(connection, row, taxonomy, parameters["lang"])
                         for row in ordered_rows[:limit]
                     ],
                     "total": len(ordered_rows),
@@ -419,7 +484,7 @@ class Handler(BaseHTTPRequestHandler):
         ).fetchall()
         return json.dumps(
             {
-                "items": [item_for(connection, row, taxonomy) for row in rows],
+                "items": [item_for(connection, row, taxonomy, parameters["lang"]) for row in rows],
                 "total": total,
                 "offset": offset,
                 "limit": limit,

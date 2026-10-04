@@ -334,6 +334,28 @@ a {
   to { transform: translateX(110%); }
 }
 
+/* ——— load-more progress ——— */
+.load-more-track {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-line);
+}
+
+.load-more-track::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 38%;
+  border-radius: 999px;
+  background: var(--color-brass);
+  transform: translateX(-105%);
+  animation: loading-sweep 1.35s var(--ease-out-expo) infinite;
+}
+
+@keyframes loading-sweep {
+  to { transform: translateX(265%); }
+}
+
 /* ——— status pulse ——— */
 .status-pulse {
   position: relative;

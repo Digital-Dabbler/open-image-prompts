@@ -1,5 +1,5 @@
-import { ArrowClockwise, FolderOpen, Images } from '@phosphor-icons/react'
-import { useEffect, useRef } from 'react'
+import { ArrowClockwise, CircleNotch, FolderOpen, Images } from '@phosphor-icons/react'
+import { useEffect, useRef, useState } from 'react'
 import { useMasonryColumnCount, useMasonryColumns } from '../hooks/useMasonryColumns'
 import { useLang } from '../i18n'
 import PromptCard from './PromptCard'
@@ -7,6 +7,7 @@ import PromptCard from './PromptCard'
 export default function PromptGallery({
   items,
   loading,
+  loadingMore = false,
   error,
   hasMore,
   onLoadMore,
@@ -20,12 +21,25 @@ export default function PromptGallery({
   const { t } = useLang()
   const sentinelRef = useRef(null)
   const requestedItemCountRef = useRef(null)
+  const [slowLoad, setSlowLoad] = useState(false)
   const columnCount = useMasonryColumnCount()
   const columns = useMasonryColumns(items, columnCount)
   const visibleItemsKey = `${items[0]?.tweet_id || 'empty'}:${items.at(-1)?.tweet_id || 'empty'}:${items.length}`
 
+  // A page can take several seconds on a slow connection. The button state shows
+  // the request is in flight; after a while it also says why it is taking long,
+  // so a stalled-looking gallery reads as "still working" instead of "broken".
   useEffect(() => {
-    if (!hasMore || loading || error) return undefined
+    if (!loadingMore) {
+      setSlowLoad(false)
+      return undefined
+    }
+    const timer = window.setTimeout(() => setSlowLoad(true), 2000)
+    return () => window.clearTimeout(timer)
+  }, [loadingMore])
+
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore || error) return undefined
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -40,7 +54,7 @@ export default function PromptGallery({
     const sentinel = sentinelRef.current
     if (sentinel) observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [error, hasMore, loading, onLoadMore, visibleItemsKey])
+  }, [error, hasMore, loading, loadingMore, onLoadMore, visibleItemsKey])
 
   if (loading) return <GallerySkeleton columnCount={columnCount} />
 
@@ -102,16 +116,35 @@ export default function PromptGallery({
         </div>
       )}
 
-      <div ref={sentinelRef} className="flex min-h-24 items-center justify-center pt-10">
+      <div
+        ref={sentinelRef}
+        className="flex min-h-24 flex-col items-center justify-center gap-3 pt-10"
+        data-loading-more={loadingMore ? 'true' : undefined}
+      >
         {hasMore ? (
-          <button
-            type="button"
-            onClick={onLoadMore}
-            className="focus-ring inline-flex items-center gap-2 rounded-full border border-line px-5 py-2.5 text-xs font-medium text-body transition-colors duration-300 hover:border-line-strong hover:text-ink"
-          >
-            <Images size={15} />
-            {t('gallery.loadMore')}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              aria-busy={loadingMore}
+              className={`focus-ring inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-xs font-medium transition-colors duration-300 ${
+                loadingMore
+                  ? 'cursor-progress border-line-strong bg-surface text-ink'
+                  : 'border-line text-body hover:border-line-strong hover:text-ink'
+              }`}
+            >
+              {loadingMore ? <CircleNotch size={15} className="animate-spin" /> : <Images size={15} />}
+              {loadingMore ? t('gallery.loadingMore') : t('gallery.loadMore')}
+            </button>
+            {loadingMore && (
+              <div className="flex flex-col items-center gap-2" role="status" aria-live="polite">
+                <span className="load-more-track block h-0.5 w-40 rounded-full" aria-hidden="true" />
+                <span className="sr-only">{t('gallery.loadingMore')}</span>
+                {slowLoad && <span className="text-[11px] text-faint">{t('gallery.slowHint')}</span>}
+              </div>
+            )}
+          </>
         ) : (
           <p className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-faint">
             {t('gallery.end')}

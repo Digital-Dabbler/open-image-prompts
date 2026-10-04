@@ -127,7 +127,7 @@ def prune_unreferenced_images() -> int:
     """
     if str(REPOSITORY_ROOT) not in sys.path:
         sys.path.insert(0, str(REPOSITORY_ROOT))
-    from runtime.archive_db import connect_read_only, ensure_working_database
+    from runtime.archive_db import connect_read_only, ensure_working_database, table_exists
 
     images_root = REPOSITORY_ROOT / "images"
     if not images_root.is_dir():
@@ -136,6 +136,11 @@ def prune_unreferenced_images() -> int:
     database = ensure_working_database()
     with connect_read_only(database) as connection:
         referenced = {str(row[0]) for row in connection.execute("SELECT local_path FROM images")}
+        if table_exists(connection, "videos"):
+            referenced |= {
+                str(row[0])
+                for row in connection.execute("SELECT local_path FROM videos WHERE local_path <> ''")
+            }
     removed = 0
     for path in sorted(images_root.rglob("*")):
         if not path.is_file():
@@ -180,9 +185,10 @@ def main() -> int:
         return 0
 
     packs = manifest.get("image_packs", [])
-    print(f"[2/2] image packs ({len(packs)})")
+    video_packs = manifest.get("video_packs", [])
+    print(f"[2/2] media packs ({len(packs)} image, {len(video_packs)} video)")
     MARKER_DIR.mkdir(parents=True, exist_ok=True)
-    for entry in packs:
+    for entry in [*packs, *video_packs]:
         marker = MARKER_DIR / f"{entry['asset']}.sha256"
         if marker.is_file() and marker.read_text(encoding="utf-8").strip() == entry["sha256"]:
             print(f"  {entry['asset']:26s} already extracted")

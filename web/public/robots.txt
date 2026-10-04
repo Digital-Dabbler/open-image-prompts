@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /db/
+Disallow: /health
+Disallow: /*?
+
+Sitemap: https://openimages.relakkesyang.org/sitemap.xml

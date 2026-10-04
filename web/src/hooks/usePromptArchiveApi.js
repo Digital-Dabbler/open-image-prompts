@@ -106,13 +106,14 @@ export function usePromptArchiveApi() {
   }, [retryToken])
 
   const requestUrl = useCallback((offset = 0) => {
-    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset), sort: sortOrder })
+    // `lang` keeps the payload to the one translation locale the reader shows.
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset), sort: sortOrder, lang })
     if (search.submitted) params.set('q', search.submitted)
     if (selectedTool) params.set('tool', selectedTool)
     if (selectedAuthor) params.set('author', selectedAuthor)
     if (selectedTag) params.set('tag', selectedTag)
     return `./api/prompts?${params}`
-  }, [search.submitted, selectedAuthor, selectedTag, selectedTool, sortOrder])
+  }, [lang, search.submitted, selectedAuthor, selectedTag, selectedTool, sortOrder])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -131,7 +132,9 @@ export function usePromptArchiveApi() {
         ? await fetchGallerySession(galleryRequest.sessionId, { signal: controller.signal })
         : null
       const payload = await fetchApiJson(
-        session ? galleryPromptApiUrl(session) : requestUrl(0),
+        session
+          ? `${galleryPromptApiUrl(session)}&lang=${encodeURIComponent(lang)}`
+          : requestUrl(0),
         { signal: controller.signal },
       )
       return { payload, session }
@@ -156,7 +159,7 @@ export function usePromptArchiveApi() {
       controller.abort()
       loadMoreControllerRef.current?.abort()
     }
-  }, [galleryRequest.sessionId, requestUrl, retryToken])
+  }, [galleryRequest.sessionId, lang, requestUrl, retryToken])
 
   const loadMore = useCallback(async () => {
     if (gallerySession || loadingMore || items.length >= total) return
@@ -218,6 +221,7 @@ export function usePromptArchiveApi() {
     items: localizedItems,
     visibleItems: localizedItems,
     loading,
+    loadingMore,
     error,
     retry: () => setRetryToken((token) => token + 1),
     query: search.draft,
