@@ -10,8 +10,13 @@ JavaScript at all:
     u/<author>/index.html            author hubs
     tag/<dimension>/<slug>/          taxonomy hubs
     archive/<YYYY-MM>/               monthly archives
+    all/index.html                   crawlable index of every hub (sitemaps + links)
     about/, takedown/                trust pages
     robots.txt, sitemap*.xml         crawl entry points
+
+``--home-fragment`` also emits the static content that ``scripts/build_seo_pages.mjs``
+splices into the built SPA shell, so the domain root stops being an empty
+``<div id="root">`` with zero outbound links.
 
 Design notes (decided 2026-10-03 after six parallel research passes):
 
@@ -81,6 +86,9 @@ MIN_PROMPT_CHARS = int(os.getenv("OIP_SEO_MIN_PROMPT_CHARS", "400"))
 MIN_TAG_COUNT = int(os.getenv("OIP_SEO_MIN_TAG_COUNT", "10"))
 MIN_TOOL_COUNT = int(os.getenv("OIP_SEO_MIN_TOOL_COUNT", "20"))
 MIN_AUTHOR_COUNT = int(os.getenv("OIP_SEO_MIN_AUTHOR_COUNT", "5"))
+# A creator/tag hub is indexable (sitemap entry, no ``noindex``) only above this
+# size: a hub with three prompts is a thin page. Tool hubs are always indexable.
+HUB_INDEX_MIN_COUNT = int(os.getenv("OIP_SEO_HUB_INDEX_MIN", "20"))
 INDEX_LIMIT = int(os.getenv("OIP_SEO_INDEX_LIMIT", "4000"))
 MANIFEST_NAME = ".seo-manifest.json"
 # Newly written indexable URLs, consumed by scripts/build_seo_pages.mjs for IndexNow.
@@ -123,6 +131,9 @@ ul.grid img{aspect-ratio:4/3;object-fit:cover;width:100%}
 footer{margin-top:56px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 14px}
 .count{color:var(--brass);font-family:ui-monospace,monospace}
+ul.links{list-style:none;padding:0;margin:0 0 8px;display:flex;flex-wrap:wrap;gap:6px}
+ul.links a{font-size:13px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;display:inline-block;color:var(--ink)}
+ul.links a:hover{border-color:var(--brass);text-decoration:none}
 """
 
 
@@ -427,7 +438,8 @@ def layout(*, lang: str, title: str, description: str, canonical: str, body: str
 {body}
 <footer>
 <p>Source prompts are reproduced byte-for-byte with attribution to the original creator.
-Every record links back to its X post. <a href="/about/">How this archive works</a> ·
+Every record links back to its X post. <a href="/all/">全部入口索引</a> ·
+<a href="/about/">How this archive works</a> ·
 <a href="/takedown/">Creator opt-out / takedown</a></p>
 <p>Open Image Prompts · open dataset, open source (<a href="https://github.com/NanmiCoder/open-image-prompts" rel="noopener">GitHub</a>)</p>
 </footer>
@@ -729,6 +741,112 @@ def trust_page(slug: str) -> str:
     )
 
 
+def render_link_groups(groups: list[tuple[str, list[tuple[str, str]]]]) -> str:
+    """Render (heading, [(label, href)]) groups as chip lists."""
+    blocks = []
+    for heading, links in groups:
+        if not links:
+            continue
+        items = "".join(
+            f'<li><a href="{esc(href)}">{esc(label)}</a></li>' for label, href in links
+        )
+        blocks.append(f'<h2>{esc(heading)}</h2>\n<ul class="links">{items}</ul>')
+    return "\n".join(blocks)
+
+
+def index_page(groups: list[tuple[str, list[tuple[str, str]]]], counts: dict[str, int]) -> str:
+    """``/all/`` — a hand-curated, fully crawlable index of every hub page.
+
+    The sitemap makes Google aware of the URLs; this page is what turns them into a
+    shallow link graph, so a crawler that lands anywhere can reach every hub (and
+    from a hub, 48 prompt pages) in two hops. It is also the human-readable index.
+    """
+    canonical = f"{SITE}/all/"
+    description = clamp(
+        f"{counts['prompts']} 条 AI 提示词档案的全部入口：{counts['tools']} 个模型、"
+        f"{counts['tags']} 个主题标签、{counts['authors']} 位创作者，逐条可追溯。",
+        155,
+    )
+    structured = json_ld(
+        {
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            "name": "全部入口：提示词 / 模型 / 主题 / 创作者",
+            "description": description,
+            "url": canonical,
+            "inLanguage": "zh-Hans",
+            "isPartOf": {"@type": "WebSite", "name": "Open Image Prompts", "url": f"{SITE}/"},
+        }
+    )
+    body = (
+        '<nav class="crumbs"><a href="/">提示词库</a> › 全部入口</nav>\n'
+        "<h1>全部入口</h1>\n"
+        f'<p class="meta">{esc(description)}</p>\n'
+        f"{render_link_groups(groups)}"
+    )
+    return layout(
+        lang="zh-Hans",
+        title="全部入口：模型 / 主题 / 创作者索引 — Open Image Prompts",
+        description=description,
+        canonical=canonical,
+        body=body,
+        structured=structured,
+    )
+
+
+def home_fragment(groups: list[tuple[str, list[tuple[str, str]]]], counts: dict[str, int],
+                  recent: list[tuple[str, str]]) -> str:
+    """Static content injected into the built SPA shell (``/``) by the postbuild step.
+
+    The app is client-rendered, so ``/`` used to be an empty ``<div id="root">``: no
+    text, no links, and Google reported it as *crawled — currently not indexed*. This
+    fragment gives the domain root real content and real links; React replaces it on
+    mount, so users still get the gallery. Styles are inline so it looks intentional
+    before any stylesheet loads.
+    """
+    ink, muted, brass, panel, line = "#f4f3ee", "#a1a1aa", "#e2a75b", "#111113", "#27272a"
+    chip = (
+        f"display:inline-block;margin:0 6px 6px 0;padding:3px 10px;border:1px solid {line};"
+        f"border-radius:999px;font-size:13px;color:{ink};text-decoration:none"
+    )
+    h2 = f"style=\"font-size:16px;margin:26px 0 10px;color:{ink};font-weight:600\""
+    intro = (
+        f"{counts['prompts']} 条来自 X 创作者的 AI 绘画 / 视频提示词：逐字原文、中文译文、"
+        f"生成结果与来源链接，全部可检索、可复制、可追溯。"
+    )
+
+    def chip_block(links: list[tuple[str, str]]) -> str:
+        return "".join(
+            f'<a href="{esc(href)}" style="{chip}">{esc(label)}</a>' for label, href in links
+        )
+
+    sections = []
+    for heading, links in groups:
+        if not links:
+            continue
+        sections.append(f"<h2 {h2}>{esc(heading)}</h2>\n<div>{chip_block(links)}</div>")
+    recent_html = "".join(
+        f'<li style="margin:0 0 6px"><a href="{esc(href)}" style="color:{brass};'
+        f'text-decoration:none">{esc(label)}</a></li>'
+        for label, href in recent
+    )
+    sections.append(f"<h2 {h2}>最新收录</h2>\n<ul style=\"list-style:none;padding:0;margin:0\">{recent_html}</ul>")
+
+    return (
+        f'<section id="oip-static-home" style="max-width:960px;margin:0 auto;padding:34px 20px 48px;'
+        f'background:#09090b;color:{ink};font:16px/1.7 -apple-system,BlinkMacSystemFont,'
+        f'\'Segoe UI\',Roboto,\'Noto Sans SC\',sans-serif">\n'
+        f'<h1 style="font-size:clamp(22px,3.6vw,34px);line-height:1.3;margin:0 0 10px">'
+        f"Open Image Prompts — AI 提示词档案</h1>\n"
+        f'<p style="color:{muted};font-size:14px;margin:0 0 6px">{esc(intro)}</p>\n'
+        f'<p style="margin:0 0 4px"><a href="/all/" style="color:{brass}">'
+        f"全部入口索引（{counts['tools']} 个模型 · {counts['tags']} 个主题 · "
+        f"{counts['authors']} 位创作者）→</a></p>\n"
+        + "\n".join(sections)
+        + "\n</section>"
+    )
+
+
 class Writer:
     """Incremental, self-pruning writer with a content manifest."""
 
@@ -849,6 +967,12 @@ def main() -> int:
     parser.add_argument("--min-chars", type=int, default=MIN_PROMPT_CHARS)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-detail", action="store_true", help="hubs and sitemaps only")
+    parser.add_argument(
+        "--home-fragment",
+        type=Path,
+        default=None,
+        help="also write the crawlable homepage fragment for scripts/build_seo_pages.mjs",
+    )
     args = parser.parse_args()
 
     database = args.db or default_database()
@@ -873,6 +997,7 @@ def main() -> int:
     sitemap_entries: list[tuple[str, str]] = []
     indexable_count = 0
     changed_urls: list[str] = []
+    recent_links: list[tuple[str, str]] = []
     if not args.skip_detail:
         for start in range(0, len(order), dataset.chunk):
             batch = order[start : start + dataset.chunk]
@@ -894,9 +1019,20 @@ def main() -> int:
                     )
                     if changed:
                         changed_urls.append(f"{SITE}/p/{tweet_id}/")
+                    if len(recent_links) < 12:
+                        recent_links.append(
+                            (
+                                clamp(record["translation"] or record["prompt_text"], 54),
+                                f"/p/{tweet_id}/",
+                            )
+                        )
 
     # -- hubs ------------------------------------------------------------
     hub_entries: list[tuple[str, str]] = []
+    tool_links: list[tuple[str, str]] = []
+    author_links: list[tuple[str, str]] = []
+    tag_links: list[tuple[str, str]] = []
+    archive_links: list[tuple[str, str]] = []
     landings = sorted(
         ((count, tool) for tool, count in dataset.indexable_tools.items()), reverse=True
     )
@@ -918,6 +1054,7 @@ def main() -> int:
         )
         if pages:
             hub_entries.append((f"{SITE}/{slug_path}/", started.strftime("%Y-%m-%d")))
+            tool_links.append((f"{tool} · {count}", f"/{slug_path}/"))
 
     author_landings = sorted(
         ((count, author) for author, count in dataset.indexable_authors.items()), reverse=True
@@ -931,11 +1068,12 @@ def main() -> int:
             intro=f"@{author} 在 X 上公开发布的 {count} 条提示词归档，含原文与中文译文。",
             tweet_ids=[tweet_id for tweet_id in order if dataset.author_of.get(tweet_id) == author],
             dataset=dataset,
-            index_ok=count >= 20,
+            index_ok=count >= HUB_INDEX_MIN_COUNT,
             changed_urls=changed_urls,
         )
-        if pages and count >= 20:
+        if pages and count >= HUB_INDEX_MIN_COUNT:
             hub_entries.append((f"{SITE}/{slug_path}/", started.strftime("%Y-%m-%d")))
+            author_links.append((f"@{author} · {count}", f"/{slug_path}/"))
 
     for (dimension, tag, label), count in sorted(dataset.tag_counts.items(), key=lambda item: -item[1]):
         slug_path = f"tag/{slugify(dimension)}/{slugify(tag)}"
@@ -946,11 +1084,12 @@ def main() -> int:
             intro=f"按分类体系标记为 {label} 的 {count} 条提示词，含原文与中文译文。",
             tweet_ids=[tweet_id for tweet_id in order if (dimension, tag) in dataset.tags_of.get(tweet_id, [])],
             dataset=dataset,
-            index_ok=count >= 20,
+            index_ok=count >= HUB_INDEX_MIN_COUNT,
             changed_urls=changed_urls,
         )
         if pages:
             hub_entries.append((f"{SITE}/{slug_path}/", started.strftime("%Y-%m-%d")))
+            tag_links.append((f"{label} · {count}", f"/{slug_path}/"))
 
     months: dict[str, list[str]] = {}
     for tweet_id in order:
@@ -969,10 +1108,43 @@ def main() -> int:
             dataset=dataset,
             index_ok=False,
         )
+        archive_links.append((month, f"/archive/{month}/"))
 
     # -- trust pages -----------------------------------------------------
     for slug in TRUST_PAGES:
         writer.add(f"{slug}/index.html", trust_page(slug))
+
+    # -- the crawl graph --------------------------------------------------
+    # One index page every hub links back to, plus the static content for the SPA
+    # shell at "/". Without these, the only path to a hub is the sitemap, and the
+    # domain root is an empty <div id="root"> with zero outbound links.
+    groups = [
+        ("按模型浏览 / by model", tool_links),
+        ("按主题浏览 / by subject", tag_links),
+        ("按创作者浏览 / by creator", author_links),
+        ("按月归档 / by month", archive_links),
+    ]
+    counts = {
+        "prompts": len(order),
+        "tools": len(tool_links),
+        "tags": len(tag_links),
+        "authors": len(author_links),
+    }
+    if writer.add("all/index.html", index_page(groups, counts)):
+        changed_urls.append(f"{SITE}/all/")
+    hub_entries.append((f"{SITE}/all/", started.strftime("%Y-%m-%d")))
+    if args.home_fragment and not args.dry_run:
+        # The homepage gets a curated slice — a 400-link wall before hydration is
+        # worse than useless; /all/ carries the complete index and is one click away.
+        home_groups = [
+            ("按模型浏览 / by model", tool_links[:12]),
+            ("按主题浏览 / by subject", tag_links[:24]),
+            ("按创作者浏览 / by creator", author_links[:12]),
+            ("按月归档 / by month", archive_links[:6]),
+        ]
+        fragment = args.home_fragment
+        fragment.parent.mkdir(parents=True, exist_ok=True)
+        fragment.write_text(home_fragment(home_groups, counts, recent_links), encoding="utf-8")
 
     # -- crawl entry points ----------------------------------------------
     entries = sitemap_entries + hub_entries
