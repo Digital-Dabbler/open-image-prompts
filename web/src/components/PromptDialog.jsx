@@ -295,17 +295,18 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
           </div>
 
           <div className="flex flex-1 flex-col px-5 py-5 md:px-7 md:py-6">
-            <div className="mb-3.5 flex items-center justify-between gap-4">
-              <div>
-                <h3 className="text-[13px] font-semibold text-ink">{t('dialog.fullPrompt')}</h3>
-                <p className="mt-0.5 font-mono text-[10.5px] text-faint">{t('dialog.promptNote')}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
+            <div className="mb-3.5">
+              <h3 className="text-[13px] font-semibold text-ink">{t('dialog.fullPrompt')}</h3>
+              <p className="mt-0.5 font-mono text-[10.5px] text-faint">{t('dialog.promptNote')}</p>
+              {/* Actions sit on their own wrapping row: three buttons next to the
+                  title squeezed it into a one-character-per-line column in the
+                  narrow sidebar. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 {hasReadingTranslation && (
                   <button
                     type="button"
                     onClick={() => setShowOriginal((value) => !value)}
-                    className="focus-ring rounded-full border border-line px-3 py-2.5 text-xs font-medium text-body transition-colors hover:border-line-strong hover:text-ink"
+                    className="focus-ring shrink-0 whitespace-nowrap rounded-full border border-line px-3 py-2.5 text-xs font-medium text-body transition-colors hover:border-line-strong hover:text-ink"
                   >
                     {showOriginal ? t('dialog.showTranslation') : t('dialog.showOriginal')}
                   </button>
