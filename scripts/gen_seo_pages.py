@@ -140,7 +140,36 @@ footer{margin-top:56px;color:var(--muted);font-size:13px;border-top:1px solid va
 ul.links{list-style:none;padding:0;margin:0 0 8px;display:flex;flex-wrap:wrap;gap:6px}
 ul.links a{font-size:13px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;display:inline-block;color:var(--ink)}
 ul.links a:hover{border-color:var(--brass);text-decoration:none}
+.share{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.share button,.share a{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:7px 14px;cursor:pointer;text-decoration:none}
+.share button:hover,.share a:hover{border-color:var(--brass);text-decoration:none}
+.share [data-oip-state="copied"]{border-color:var(--brass);color:var(--brass)}
+.url{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);word-break:break-all;margin:0 0 20px}
 """
+
+# Progressive enhancement for the share block on a detail page. Without it the page
+# still works — the prompt is selectable text and the canonical URL is printed — so
+# this only adds the one-click path a visitor expects from a share target.
+COPY_SCRIPT = """<script>
+(function () {
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('[data-oip-copy]') : null;
+    if (!button || !navigator.clipboard) return;
+    var value = button.dataset.oipCopy === 'prompt'
+      ? (document.getElementById('oip-prompt-original') || {}).textContent || ''
+      : window.location.href;
+    navigator.clipboard.writeText(value).then(function () {
+      var label = button.dataset.oipLabel || button.textContent;
+      button.dataset.oipState = 'copied';
+      button.textContent = '已复制';
+      window.setTimeout(function () {
+        delete button.dataset.oipState;
+        button.textContent = label;
+      }, 2000);
+    });
+  });
+})();
+</script>"""
 
 
 def esc(value: object) -> str:
@@ -419,9 +448,23 @@ def heading_for(record: dict) -> str:
 
 
 def layout(*, lang: str, title: str, description: str, canonical: str, body: str,
-           structured: str, robots: str = "") -> str:
+           structured: str, robots: str = "", og_image: str = "", og_type: str = "article",
+           alt: str = "") -> str:
     robots_meta = f'<meta name="robots" content="{esc(robots)}">' if robots else ""
     analytics = ANALYTICS_SNIPPET
+    # Sharing is a first-class path into this archive: the shared link *is* this
+    # page, so the unfurl card has to carry the work, not just the title. Without
+    # og:image every share to X / Discord / WeChat renders as bare text.
+    social = [f'<meta property="og:site_name" content="Open Image Prompts">',
+              f'<meta property="og:type" content="{esc(og_type)}">']
+    if og_image:
+        social.append(f'<meta property="og:image" content="{esc(og_image)}">')
+        social.append(f'<meta property="og:image:alt" content="{esc(alt or title)}">')
+        social.append('<meta name="twitter:card" content="summary_large_image">')
+        social.append(f'<meta name="twitter:image" content="{esc(og_image)}">')
+    else:
+        social.append('<meta name="twitter:card" content="summary">')
+    social_meta = "\n".join(social)
     return f"""<!doctype html>
 <html lang="{esc(lang)}">
 <head>
@@ -431,10 +474,10 @@ def layout(*, lang: str, title: str, description: str, canonical: str, body: str
 <meta name="description" content="{esc(description)}">
 {robots_meta}
 <link rel="canonical" href="{esc(canonical)}">
-<meta property="og:type" content="article">
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(description)}">
 <meta property="og:url" content="{esc(canonical)}">
+{social_meta}
 <style>{CSS}</style>
 <script type="application/ld+json">{structured}</script>
 {analytics}
@@ -578,21 +621,37 @@ def render_detail(record: dict, dataset: Dataset, index_ok: bool) -> str:
     related_html = f"<h2>同工具的更多提示词</h2><ul class=\"grid\">{''.join(related_items)}</ul>" if related_items else ""
 
     prompt_original = esc(record["prompt_text"])
+    # This page is the share target: a visitor arrives from a chat or a search
+    # result and has to be able to pass the same thing on, with or without JS.
+    share_image = ""
+    for image in record["images"][:4]:
+        share_image = image_src(record, image)
+        if share_image:
+            break
+    if not share_image and record["videos"]:
+        share_image = video_poster(record["videos"][0]) or ""
     body = f"""<nav class="crumbs"><a href="/">提示词库</a> › <a href="/tool/{esc(slugify(tool))}/">{esc(tool)}</a> › <a href="/u/{esc(slugify(author))}/">@{esc(author)}</a></nav>
 <h1>{esc(heading_for(record))}</h1>
 <p class="meta">{esc(tool)} · <a href="/u/{esc(slugify(author))}/">@{esc(author)}</a> · {esc((record["created_at"] or "")[:10])}
 {(' · 视频提示词' if record['videos'] else '')}</p>
+<div class="share">
+<button type="button" data-oip-copy="prompt" data-oip-label="复制提示词">复制提示词</button>
+<button type="button" data-oip-copy="link" data-oip-label="复制本页链接">复制本页链接</button>
+<a href="/?p={esc(tweet_id)}">在画廊中打开</a>
+</div>
+<p class="url">分享链接 · <a href="{esc(canonical)}">{esc(canonical)}</a></p>
 {''.join(media)}
 <div class="chips">{chips}</div>
 <h2>提示词（原文，逐字保留）</h2>
-<div class="prompt" lang="en">{prompt_original}</div>
+<div class="prompt" lang="en" id="oip-prompt-original">{prompt_original}</div>
 <h2>中文译文</h2>
 <div class="prompt">{esc(zh or '（该条目暂无中文译文）')}</div>
 <h2>来源与署名</h2>
 <p>原文由 <strong>@{esc(author)}</strong> 发布在 X：<a href="{esc(record['tweet_url'])}" rel="nofollow noopener">查看原推文</a>。
 本页逐字保留原文并提供机器翻译的中文解读；版权归原作者所有。</p>
 <p><a href="/">在画廊中浏览</a></p>
-{related_html}"""
+{related_html}
+{COPY_SCRIPT}"""
 
     structured = detail_structured(record, canonical, title_base)
     return layout(
@@ -603,6 +662,9 @@ def render_detail(record: dict, dataset: Dataset, index_ok: bool) -> str:
         body=body,
         structured=structured,
         robots="" if index_ok else "noindex, follow",
+        og_image=share_image,
+        og_type="video.other" if record["videos"] else "article",
+        alt=heading_for(record),
     )
 
 

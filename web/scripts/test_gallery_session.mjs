@@ -10,8 +10,14 @@ import {
 
 const sessionId = '123e4567-e89b-42d3-a456-426614174000'
 const request = galleryRequestFromSearch(`?session=${sessionId}&focus=22&lang=zh`)
-assert.deepEqual(request, { sessionId, focusId: '22', lang: 'zh' })
+assert.deepEqual(request, { sessionId, focusId: '22', promptId: '', lang: 'zh' })
 assert.equal(galleryRequestFromSearch('?session=../../secret').sessionId, '')
+assert.equal(
+  galleryRequestFromSearch('?p=2107722836668244236').promptId,
+  '2107722836668244236',
+  'a detail page can deep-link one prompt back into the gallery',
+)
+assert.equal(galleryRequestFromSearch('?p=../etc/passwd').promptId, '', 'non-id ?p= values are ignored')
 
 const session = normalizeGallerySession({
   schema_version: 'oip-gallery-session-v1',

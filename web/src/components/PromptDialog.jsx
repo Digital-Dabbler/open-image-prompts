@@ -5,6 +5,7 @@ import {
   Check,
   Copy,
   Play,
+  ShareNetwork,
   WarningCircle,
   X,
 } from '@phosphor-icons/react'
@@ -13,16 +14,24 @@ import { useEffect, useRef, useState } from 'react'
 import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
 import { mediaItems } from '../media'
+import { promptShareUrl, sharePrompt } from '../share'
 import SmartImage from './ui/SmartImage'
 import SmartVideo from './ui/SmartVideo'
+
+function excerptForShare(text, limit = 140) {
+  const collapsed = String(text || '').replace(/\s+/g, ' ').trim()
+  return collapsed.length <= limit ? collapsed : `${collapsed.slice(0, limit - 1).trimEnd()}…`
+}
 
 export default function PromptDialog({ item, position, total, onClose, onStep, onCopied }) {
   const { t, locale } = useLang()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [copyState, setCopyState] = useState('idle')
+  const [shareState, setShareState] = useState('idle')
   const [showOriginal, setShowOriginal] = useState(true)
   const closeButtonRef = useRef(null)
   const resetTimerRef = useRef(null)
+  const shareTimerRef = useRef(null)
   const media = mediaItems(item)
   const currentMedia = media[currentIndex]
   const hasReadingTranslation = Boolean(item.localized_prompt && item.localized_prompt !== item.prompt_text)
@@ -39,8 +48,10 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
   useEffect(() => {
     setCurrentIndex(0)
     setCopyState('idle')
+    setShareState('idle')
     setShowOriginal(true)
     window.clearTimeout(resetTimerRef.current)
+    window.clearTimeout(shareTimerRef.current)
   }, [item.tweet_id])
 
   useEffect(() => {
@@ -86,6 +97,27 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
 
     window.clearTimeout(resetTimerRef.current)
     resetTimerRef.current = window.setTimeout(() => setCopyState('idle'), 2200)
+  }
+
+  // Sharing hands over the pre-rendered page for this prompt — the same URL the
+  // search engines index — instead of the homepage the modal sits on.
+  async function sharePromptLink() {
+    try {
+      const outcome = await sharePrompt(item.tweet_id, {
+        title: `${t('dialog.shareTitle', { author: item.author })}`,
+        text: excerptForShare(displayedPrompt),
+      })
+      if (outcome === 'copied') {
+        setShareState('copied')
+        onCopied?.(t('dialog.shareCopied'))
+      }
+    } catch {
+      setShareState('error')
+      onCopied?.(t('dialog.shareFailed'))
+    }
+
+    window.clearTimeout(shareTimerRef.current)
+    shareTimerRef.current = window.setTimeout(() => setShareState('idle'), 2200)
   }
 
   return (
@@ -158,27 +190,29 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
           <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-abyss/80 to-transparent" />
 
           <div className="absolute left-4 top-4 flex items-center gap-2 md:left-5 md:top-5">
-            <div className="flex items-center gap-1 rounded-full border border-white/12 bg-abyss/60 p-1 backdrop-blur-md">
-              <button
-                type="button"
-                onClick={() => onStep(-1)}
-                aria-label={t('dialog.prevItem')}
-                className="focus-ring grid size-7 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <CaretLeft size={15} />
-              </button>
-              <span className="min-w-[68px] text-center font-mono text-[10.5px] tabular-nums text-white/70">
-                {position} / {total}
-              </span>
-              <button
-                type="button"
-                onClick={() => onStep(1)}
-                aria-label={t('dialog.nextItem')}
-                className="focus-ring grid size-7 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <CaretRight size={15} />
-              </button>
-            </div>
+            {total > 1 && (
+              <div className="flex items-center gap-1 rounded-full border border-white/12 bg-abyss/60 p-1 backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={() => onStep(-1)}
+                  aria-label={t('dialog.prevItem')}
+                  className="focus-ring grid size-7 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <CaretLeft size={15} />
+                </button>
+                <span className="min-w-[68px] text-center font-mono text-[10.5px] tabular-nums text-white/70">
+                  {position} / {total}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onStep(1)}
+                  aria-label={t('dialog.nextItem')}
+                  className="focus-ring grid size-7 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <CaretRight size={15} />
+                </button>
+              </div>
+            )}
             {media.length > 1 && (
               <span className="rounded-full border border-white/12 bg-abyss/60 px-3 py-1.5 font-mono text-[10px] text-white/70 backdrop-blur-md">
                 {currentIndex + 1} / {media.length}
@@ -276,6 +310,22 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
                     {showOriginal ? t('dialog.showTranslation') : t('dialog.showOriginal')}
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={sharePromptLink}
+                  title={promptShareUrl(item.tweet_id)}
+                  aria-label={t('dialog.share')}
+                  className={`focus-ring inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full border px-4 py-2.5 text-xs font-medium transition-colors ${
+                    shareState === 'error'
+                      ? 'border-error/40 text-error'
+                      : shareState === 'copied'
+                        ? 'border-brass text-brass-strong'
+                        : 'border-line text-body hover:border-line-strong hover:text-ink'
+                  }`}
+                >
+                  {shareState === 'copied' ? <Check size={14} /> : <ShareNetwork size={14} />}
+                  {shareState === 'copied' ? t('dialog.shareCopiedShort') : t('dialog.share')}
+                </button>
                 <button
                   type="button"
                   onClick={copyPrompt}

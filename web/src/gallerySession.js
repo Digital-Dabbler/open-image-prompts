@@ -2,6 +2,7 @@ export const GALLERY_SESSION_SCHEMA = 'oip-gallery-session-v1'
 export const GALLERY_TAXONOMY_VERSION = 'oip-visual-v2'
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const PROMPT_ID = /^[0-9]{6,25}$/
 
 function clean(value) {
   return String(value || '').trim()
@@ -24,9 +25,14 @@ function normalizeMatchReason(reason) {
 export function galleryRequestFromSearch(search = '') {
   const params = new URLSearchParams(search)
   const sessionId = clean(params.get('session')).toLocaleLowerCase()
+  const promptId = clean(params.get('p'))
   return {
     sessionId: SESSION_ID.test(sessionId) ? sessionId : '',
     focusId: clean(params.get('focus')),
+    // `?p=<tweet_id>` is the deep link the pre-rendered detail pages use for
+    // "open this prompt in the gallery". Query strings are disallowed in
+    // robots.txt, so this never competes with the crawlable `/p/<id>/` page.
+    promptId: PROMPT_ID.test(promptId) ? promptId : '',
     lang: params.get('lang') === 'zh' ? 'zh' : params.get('lang') === 'en' ? 'en' : '',
   }
 }
