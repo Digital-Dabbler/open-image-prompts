@@ -12,8 +12,9 @@
 //                             never blocks shipping the app itself
 //   * broken output        -> the generator keeps the previous page tree intact
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -76,6 +77,88 @@ async function submitToIndexNow(directory) {
   }
 }
 
+// --- static content for the SPA shell ---------------------------------------
+//
+// `/` is client-rendered, so its HTML carried no text and no links at all: Google
+// crawled it three times and reported "crawled — currently not indexed", and a
+// crawler had no way to discover anything except the sitemap. The generator emits
+// this block; here it is spliced into the built shell so the root page has real
+// content and real links before (and without) JavaScript. React replaces it on
+// mount, so the gallery is unaffected.
+const HOME_START = '<!--oip-static-home-->'
+const HOME_END = '<!--/oip-static-home-->'
+const HEAD_START = '<!--oip-static-head-->'
+const HEAD_END = '<!--/oip-static-head-->'
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function staticHead() {
+  const structured = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Open Image Prompts',
+    alternateName: 'AI 提示词档案',
+    url: `${site}/`,
+    description: '浏览好看的 AI 图片，查看并复制生成它们的提示词。',
+    inLanguage: ['zh-Hans', 'en'],
+  })
+  return [
+    HEAD_START,
+    `<link rel="canonical" href="${site}/">`,
+    '<meta property="og:type" content="website">',
+    `<meta property="og:url" content="${site}/">`,
+    '<meta property="og:title" content="Open Image Prompts — 看好图，复制好提示词">',
+    `<script type="application/ld+json">${structured}</script>`,
+    HEAD_END,
+  ].join('\n')
+}
+
+function injectStaticHome(fragmentPath) {
+  if (process.env.OIP_SEO_HOME_INJECT === '0') {
+    console.log('seo-pages: homepage injection disabled by OIP_SEO_HOME_INJECT=0')
+    return
+  }
+  const indexFile = resolve(repositoryRoot, 'web', 'dist', 'index.html')
+  if (!existsSync(indexFile)) {
+    console.log('seo-pages: web/dist/index.html not found; skipping homepage injection')
+    return
+  }
+  let fragment = ''
+  try {
+    fragment = readFileSync(fragmentPath, 'utf8').trim()
+  } catch {
+    fragment = ''
+  }
+  if (!fragment) {
+    console.warn('seo-pages: generator produced no homepage fragment; leaving the shell untouched')
+    return
+  }
+  let html = readFileSync(indexFile, 'utf8')
+  // Idempotent: drop any copy of the markers from an earlier run before re-adding.
+  for (const [start, end] of [
+    [HOME_START, HOME_END],
+    [HEAD_START, HEAD_END],
+  ]) {
+    html = html.replace(new RegExp(`${escapeRegExp(start)}[\\s\\S]*?${escapeRegExp(end)}`, 'g'), '')
+  }
+  html = html.replace('</head>', `${staticHead()}\n</head>`)
+  const block = `${HOME_START}${fragment}${HOME_END}`
+  if (html.includes('<div id="root"></div>')) {
+    html = html.replace('<div id="root"></div>', `<div id="root">${block}</div>`)
+  } else if (html.includes('<div id="root">')) {
+    html = html.replace('<div id="root">', `<div id="root">${block}`)
+  } else {
+    console.warn('seo-pages: no <div id="root"> in web/dist/index.html; skipping homepage injection')
+    return
+  }
+  writeFileSync(indexFile, html)
+  console.log(
+    `seo-pages: injected ${fragment.length} bytes of crawlable home content into web/dist/index.html`,
+  )
+}
+
 function newestStagedDatabase() {
   const stateDir = '/var/lib/open-image-prompts'
   if (!existsSync(stateDir)) return null
@@ -115,19 +198,29 @@ if (!database) {
 }
 
 const python = process.env.OIP_PYTHON || 'python3'
-const args = [generator, '--db', database, '--out', outDir]
+// The generator also produces the static content that keeps the domain root from
+// being an empty SPA shell. It lands in a temp file and is injected below, because
+// only the web build owns web/dist/index.html.
+const fragmentDir = mkdtempSync(join(tmpdir(), 'oip-seo-'))
+const fragmentPath = join(fragmentDir, 'home-fragment.html')
+const args = [generator, '--db', database, '--out', outDir, '--home-fragment', fragmentPath]
 if (process.env.OIP_SEO_INDEX_LIMIT) args.push('--index-limit', process.env.OIP_SEO_INDEX_LIMIT)
 if (process.env.OIP_SEO_LIMIT) args.push('--limit', process.env.OIP_SEO_LIMIT)
 
 const result = spawnSync(python, args, { stdio: 'inherit' })
 if (result.error) {
   console.warn(`seo-pages: could not run ${python}: ${result.error.message}`)
+  rmSync(fragmentDir, { force: true, recursive: true })
   process.exit(0)
 }
 if (result.status !== 0) {
   console.warn(`seo-pages: generation failed (exit ${result.status}); keeping the previous page tree`)
+  rmSync(fragmentDir, { force: true, recursive: true })
   process.exit(process.env.OIP_SEO_STRICT === '1' ? result.status : 0)
 }
+
+injectStaticHome(fragmentPath)
+rmSync(fragmentDir, { force: true, recursive: true })
 
 // Ping IndexNow for the pages this run actually wrote. Bing/Yandex/Seznam consume
 // it; Google does not, and instead picks pages up through the sitemap. The key is

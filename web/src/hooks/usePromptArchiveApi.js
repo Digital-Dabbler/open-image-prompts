@@ -79,6 +79,7 @@ export function usePromptArchiveApi() {
   const [retryToken, setRetryToken] = useState(0)
   const [gallerySession, setGallerySession] = useState(null)
   const [missingSessionReferences, setMissingSessionReferences] = useState([])
+  const [deepLinkRecord, setDeepLinkRecord] = useState(null)
   const [search, dispatchSearch] = useReducer(searchReducer, initialSearchState)
   const [selectedTool, setSelectedTool] = useState('')
   const [selectedAuthor, setSelectedAuthor] = useState('')
@@ -199,6 +200,33 @@ export function usePromptArchiveApi() {
     () => items.map((item) => hydrate(item, dims, lang)),
     [dims, items, lang],
   )
+
+  // `?p=<tweet_id>` — the deep link the pre-rendered detail pages hand back to the
+  // gallery. Fetch it by id: a shared prompt can easily be older than the first
+  // page, so waiting for it to appear in `items` would fail for most links.
+  useEffect(() => {
+    const promptId = galleryRequest.promptId
+    if (!promptId || gallerySession) {
+      setDeepLinkRecord(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    const params = new URLSearchParams({ limit: '1', ids: promptId, lang })
+    fetchApiJson(`./api/prompts?${params}`, { signal: controller.signal })
+      .then((payload) => {
+        const record = (payload.items || []).find((entry) => String(entry.tweet_id) === promptId)
+        setDeepLinkRecord(record || null)
+      })
+      .catch((loadError) => {
+        if (loadError.name !== 'AbortError') setDeepLinkRecord(null)
+      })
+    return () => controller.abort()
+  }, [galleryRequest.promptId, gallerySession, lang, retryToken])
+
+  const deepLinkItem = useMemo(
+    () => (deepLinkRecord ? hydrate(deepLinkRecord, dims, lang) : null),
+    [deepLinkRecord, dims, lang],
+  )
   const tags = useMemo(() => catalog.tags.map((tag) => ({
     value: tag.value,
     label: lang === 'zh' ? tag.label_zh : tag.label_en,
@@ -246,7 +274,10 @@ export function usePromptArchiveApi() {
     stats: catalog.stats,
     gallerySession,
     missingSessionReferences,
-    focusId: validGalleryFocus(galleryRequest.focusId, gallerySession, items),
+    deepLinkItem,
+    focusId:
+      validGalleryFocus(galleryRequest.focusId, gallerySession, items)
+      || (deepLinkItem ? String(deepLinkItem.tweet_id) : ''),
     filteredCount: gallerySession ? localizedItems.length : total,
     hasMore: !gallerySession && items.length < total,
     loadMore,

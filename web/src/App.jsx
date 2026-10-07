@@ -21,6 +21,13 @@ function App() {
     ? navigationItems.findIndex((item) => item.tweet_id === selectedId)
     : -1
   const selectedItem = selectedIndex >= 0 ? navigationItems[selectedIndex] : null
+  // A `/?p=<id>` deep link can point at a prompt that is not in the loaded page
+  // at all; the hook fetches that one record separately.
+  const deepLinkedItem =
+    !selectedItem && archive.deepLinkItem && String(archive.deepLinkItem.tweet_id) === String(selectedId)
+      ? archive.deepLinkItem
+      : null
+  const activeItem = selectedItem || deepLinkedItem
 
   const notify = useCallback((message) => {
     window.clearTimeout(toastTimerRef.current)
@@ -127,11 +134,11 @@ function App() {
       </footer>
 
       <AnimatePresence>
-        {selectedItem && (
+        {activeItem && (
           <PromptDialog
-            item={selectedItem}
-            position={selectedIndex + 1}
-            total={archive.gallerySession ? navigationItems.length : archive.filteredCount}
+            item={activeItem}
+            position={selectedIndex >= 0 ? selectedIndex + 1 : 1}
+            total={selectedIndex >= 0 ? (archive.gallerySession ? navigationItems.length : archive.filteredCount) : 1}
             onClose={() => setSelectedId(null)}
             onStep={stepSelection}
             onCopied={notify}

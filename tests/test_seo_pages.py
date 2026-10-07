@@ -139,6 +139,7 @@ class SeoPageTests(unittest.TestCase):
                     "OIP_SEO_MIN_TOOL_COUNT": "2",
                     "OIP_SEO_MIN_TAG_COUNT": "2",
                     "OIP_SEO_MIN_AUTHOR_COUNT": "2",
+                    "OIP_SEO_HUB_INDEX_MIN": "2",
                 }
             )
         return subprocess.run(
@@ -231,6 +232,51 @@ class SeoPageTests(unittest.TestCase):
         self.assertTrue((self.out / "tool" / "nano-banana" / "index.html").is_file())
         self.assertFalse((self.out / "tool" / "midjourney" / "index.html").exists())
         self.assertTrue((self.out / "tag" / "visual-style" / "cinematic" / "index.html").is_file())
+
+    def test_index_page_is_the_crawl_graph_and_in_the_sitemap(self) -> None:
+        # Every hub links back here, so one crawl hop reaches the whole taxonomy
+        # instead of relying on the sitemap alone.
+        page = self.read("all/index.html")
+        self.assertIn('rel="canonical" href="https://openimages.relakkesyang.org/all/"', page)
+        for href in ("/tool/nano-banana/", "/tag/visual-style/cinematic/", "/u/alice/"):
+            self.assertIn(f'href="{href}"', page)
+        self.assertIn("/all/", self.read("sitemap-1.xml"))
+        self.assertIn('href="/all/"', self.read("p/1001/index.html"))
+
+    def test_home_fragment_is_written_only_when_requested(self) -> None:
+        fragment = self.tmp / "home-fragment.html"
+        self.run_generator("--home-fragment", str(fragment))
+        html = fragment.read_text(encoding="utf-8")
+        # A fragment, not a page: the app shell owns <html>/<head>.
+        self.assertNotIn("<html", html)
+        self.assertIn('id="oip-static-home"', html)
+        self.assertIn('href="/all/"', html)
+        self.assertIn('href="/tool/nano-banana/"', html)
+        self.assertNotIn("googletagmanager", html)
+        self.assertFalse((self.out / "home-fragment.html").exists())
+
+    def test_detail_page_is_a_share_target(self) -> None:
+        # The dialog in the app shares this URL, so the unfurl card and the
+        # on-page copy actions are part of the feature, not decoration.
+        page = self.read("p/1001/index.html")
+        self.assertIn('<meta property="og:image" content="', page)
+        self.assertIn('name="twitter:card" content="summary_large_image"', page)
+        self.assertIn('<meta property="og:type" content="article">', page)
+        self.assertIn('data-oip-copy="prompt"', page)
+        self.assertIn('data-oip-copy="link"', page)
+        self.assertIn('href="/?p=1001"', page)
+        self.assertIn('id="oip-prompt-original"', page)
+        self.assertIn("https://openimages.relakkesyang.org/p/1001/</a>", page)
+
+    def test_video_page_unfurls_with_its_poster(self) -> None:
+        page = self.read("p/1003/index.html")
+        self.assertIn('<meta property="og:type" content="video.other">', page)
+        self.assertIn("video_1.jpg", page.split('property="og:image"', 1)[1].split(">", 1)[0])
+
+    def test_hubs_do_not_claim_an_image(self) -> None:
+        hub = self.read("tool/nano-banana/index.html")
+        self.assertIn('name="twitter:card" content="summary"', hub)
+        self.assertNotIn('property="og:image"', hub)
 
     def test_second_run_is_incremental_and_prunes_deleted_records(self) -> None:
         # Isolated fixture: this test deletes a record on purpose.
