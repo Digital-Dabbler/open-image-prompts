@@ -18,6 +18,12 @@ JavaScript at all:
 splices into the built SPA shell, so the domain root stops being an empty
 ``<div id="root">`` with zero outbound links.
 
+A *new top-level directory* here is not enough on its own: the host only serves
+these paths statically through the ``@seoPages`` matcher in
+``/etc/caddy/sites/open-image-prompts.caddy`` (root-owned, not in git). Anything
+outside that list silently falls through to the SPA shell and answers 200 with the
+gallery HTML — which is exactly the soft-404 the page tree exists to avoid.
+
 Design notes (decided 2026-10-03 after six parallel research passes):
 
 * **One URL per prompt, both languages on the page.** The prompt is one work; the
