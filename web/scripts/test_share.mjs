@@ -46,6 +46,29 @@ test('a deep link does not disturb the existing session parameters', () => {
   assert.equal(request.promptId, '2107722836668244236')
 })
 
+test('the running site decides the origin, so a mirror shares its own links', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  try {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { origin: 'https://mirror.example', protocol: 'https:' } },
+    })
+    assert.equal(promptShareUrl('2107722836668244236'), 'https://mirror.example/p/2107722836668244236/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { origin: 'null', protocol: 'file:' } },
+    })
+    assert.equal(
+      promptShareUrl('2107722836668244236'),
+      'https://openimages.relakkesyang.org/p/2107722836668244236/',
+      'a non-http origin never leaks into a shared link',
+    )
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'window', original)
+    else delete globalThis.window
+  }
+})
+
 test('the desktop keeps the clipboard, touch devices get the share sheet', () => {
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')

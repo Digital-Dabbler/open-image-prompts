@@ -11,14 +11,28 @@ export const SHARE_ORIGIN = 'https://openimages.relakkesyang.org'
 
 const NUMERIC_ID = /^[0-9]{6,25}$/
 
-export function promptShareUrl(tweetId, origin = SHARE_ORIGIN) {
+/**
+ * The origin a shared link should point at. The running site wins so a fork or a
+ * mirror hands out its own URLs; the constant is the fallback (tests, SSR).
+ */
+export function shareOrigin() {
+  try {
+    const origin = window.location?.origin
+    if (origin && /^https?:/.test(window.location.protocol)) return origin
+  } catch {
+    /* no window: fall through to the canonical origin */
+  }
+  return SHARE_ORIGIN
+}
+
+export function promptShareUrl(tweetId, origin = shareOrigin()) {
   const id = String(tweetId ?? '').trim()
   if (!NUMERIC_ID.test(id)) return ''
   return `${String(origin).replace(/\/+$/, '')}/p/${id}/`
 }
 
 /** The gallery URL that opens this prompt in the app (`/?p=<id>`). */
-export function galleryDeepLink(tweetId, origin = SHARE_ORIGIN) {
+export function galleryDeepLink(tweetId, origin = shareOrigin()) {
   const id = String(tweetId ?? '').trim()
   if (!NUMERIC_ID.test(id)) return ''
   return `${String(origin).replace(/\/+$/, '')}/?p=${id}`
