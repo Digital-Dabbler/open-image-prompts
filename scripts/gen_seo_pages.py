@@ -62,7 +62,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SITE = os.getenv("OIP_SEO_SITE", "https://openimages.relakkesyang.org").rstrip("/")
+SITE = os.getenv("OIP_SEO_SITE", "https://openimages.ajiang.me").rstrip("/")
 TAXONOMY = os.getenv("OIP_SEO_TAXONOMY", "oip-visual-v2")
 
 # Media bases. Videos are archived on this host; the 35k stills are not (owned by

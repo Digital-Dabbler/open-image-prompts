@@ -178,7 +178,7 @@ class SeoPageTests(unittest.TestCase):
         self.assertIn("lang=\"en\"", page)          # byte-for-byte original
         self.assertIn("中文译文 1001", page)         # reading translation
         self.assertIn("https://x.com/alice/status/1001", page)
-        self.assertIn("rel=\"canonical\" href=\"https://openimages.relakkesyang.org/p/1001/\"", page)
+        self.assertIn("rel=\"canonical\" href=\"https://openimages.ajiang.me/p/1001/\"", page)
 
     def test_detail_page_structured_data_parses(self) -> None:
         page = self.read("p/1001/index.html")
@@ -225,7 +225,7 @@ class SeoPageTests(unittest.TestCase):
         self.assertIn("1 indexable", result.stdout)
         sitemap = (limited / "sitemap-1.xml").read_text(encoding="utf-8")
         # Hubs are indexable on their own; the cap applies to prompt pages.
-        self.assertEqual(sitemap.count("<loc>https://openimages.relakkesyang.org/p/"), 1)
+        self.assertEqual(sitemap.count("<loc>https://openimages.ajiang.me/p/"), 1)
         shutil.rmtree(limited, ignore_errors=True)
 
     def test_hub_pages_exist_for_qualified_dimensions_only(self) -> None:
@@ -237,7 +237,7 @@ class SeoPageTests(unittest.TestCase):
         # Every hub links back here, so one crawl hop reaches the whole taxonomy
         # instead of relying on the sitemap alone.
         page = self.read("all/index.html")
-        self.assertIn('rel="canonical" href="https://openimages.relakkesyang.org/all/"', page)
+        self.assertIn('rel="canonical" href="https://openimages.ajiang.me/all/"', page)
         for href in ("/tool/nano-banana/", "/tag/visual-style/cinematic/", "/u/alice/"):
             self.assertIn(f'href="{href}"', page)
         self.assertIn("/all/", self.read("sitemap-1.xml"))
@@ -266,7 +266,7 @@ class SeoPageTests(unittest.TestCase):
         self.assertIn('data-oip-copy="link"', page)
         self.assertIn('href="/?p=1001"', page)
         self.assertIn('id="oip-prompt-original"', page)
-        self.assertIn("https://openimages.relakkesyang.org/p/1001/</a>", page)
+        self.assertIn("https://openimages.ajiang.me/p/1001/</a>", page)
 
     def test_video_page_unfurls_with_its_poster(self) -> None:
         page = self.read("p/1003/index.html")

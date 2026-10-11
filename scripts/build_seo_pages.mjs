@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const generator = resolve(repositoryRoot, 'scripts', 'gen_seo_pages.py')
 const outDir = process.env.OIP_SEO_OUT || '/var/www/oip-pages'
-const site = (process.env.OIP_SEO_SITE || 'https://openimages.relakkesyang.org').replace(/\/$/, '')
+const site = (process.env.OIP_SEO_SITE || 'https://openimages.ajiang.me').replace(/\/$/, '')
 
 // The IndexNow key is whatever `<hex>.txt` file the build published, so the
 // key lives in git next to robots.txt and nothing has to configure it.

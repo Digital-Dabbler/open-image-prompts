@@ -8,7 +8,7 @@ test('a shared prompt points at the pre-rendered page, not the gallery root', ()
   // with the work's own media. Shipping the homepage link was the bug.
   assert.equal(
     promptShareUrl('2107722836668244236'),
-    'https://openimages.relakkesyang.org/p/2107722836668244236/',
+    'https://openimages.ajiang.me/p/2107722836668244236/',
   )
 })
 
@@ -25,7 +25,7 @@ test('anything that is not a tweet id produces no link at all', () => {
 test('the gallery deep link keeps the id and stays a query string', () => {
   assert.equal(
     galleryDeepLink('2107722836668244236'),
-    'https://openimages.relakkesyang.org/?p=2107722836668244236',
+    'https://openimages.ajiang.me/?p=2107722836668244236',
   )
   assert.equal(galleryDeepLink('nope'), '')
 })
@@ -60,7 +60,7 @@ test('the running site decides the origin, so a mirror shares its own links', ()
     })
     assert.equal(
       promptShareUrl('2107722836668244236'),
-      'https://openimages.relakkesyang.org/p/2107722836668244236/',
+      'https://openimages.ajiang.me/p/2107722836668244236/',
       'a non-http origin never leaks into a shared link',
     )
   } finally {
