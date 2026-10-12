@@ -5,4 +5,4 @@ Disallow: /db/
 Disallow: /health
 Disallow: /*?
 
-Sitemap: https://openimages.relakkesyang.org/sitemap.xml
+Sitemap: https://openimages.ajiang.me/sitemap.xml

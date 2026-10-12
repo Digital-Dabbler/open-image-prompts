@@ -7,7 +7,7 @@
 // canonical tags and JSON-LD), so that is what "share" produces.
 import { writeClipboard } from './clipboard.js'
 
-export const SHARE_ORIGIN = 'https://openimages.relakkesyang.org'
+export const SHARE_ORIGIN = 'https://openimages.ajiang.me'
 
 const NUMERIC_ID = /^[0-9]{6,25}$/
 
