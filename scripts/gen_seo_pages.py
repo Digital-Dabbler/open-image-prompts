@@ -442,6 +442,23 @@ def video_poster(video: dict) -> str:
     return f"{VIDEO_BASE}/{local}" if local else ""
 
 
+def iso_datetime(value: str | None) -> str:
+    """X's ``Mon Jul 18 07:49:08 +0000 2026`` → ``2026-07-18T07:49:08+00:00``.
+
+    Structured data must be ISO 8601; Google rejected the raw X format for both
+    VideoObject.uploadDate and CreativeWork.datePublished.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    for pattern in ("%a %b %d %H:%M:%S %z %Y", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, pattern).isoformat()
+        except ValueError:
+            continue
+    return raw
+
+
 def heading_for(record: dict) -> str:
     source = record["translation"] or record["prompt_text"]
     return clamp(source.split("\n")[0], 68)
@@ -514,16 +531,27 @@ def detail_structured(record: dict, canonical: str, title: str) -> str:
         src = video_src(video)
         if not src:
             continue
+        # Google requires VideoObject.thumbnailUrl (GSC WNC-10030322). Prefer the
+        # video poster; fall back to the item's first image when the video itself
+        # is archived; if there is no thumbnail at all (deleted tweet / expired
+        # source) emit no VideoObject rather than an invalid rich result.
+        thumbnail = video_poster(video)
+        if not thumbnail and (video.get("local") or ""):
+            for image in record["images"]:
+                candidate = image_src(record, image)
+                if candidate:
+                    thumbnail = candidate
+                    break
+        if not thumbnail:
+            continue
         node = {
             "@type": "VideoObject",
             "name": title,
             "description": clamp(record["translation"] or record["prompt_text"], 200),
             "contentUrl": src,
-            "uploadDate": (record["created_at"] or "")[:19] or None,
+            "thumbnailUrl": thumbnail,
+            "uploadDate": iso_datetime(record["created_at"]),
         }
-        poster = video_poster(video)
-        if poster:
-            node["thumbnailUrl"] = poster
         videos.append({key: value for key, value in node.items() if value})
     work = {
         "@type": "CreativeWork",
@@ -531,8 +559,8 @@ def detail_structured(record: dict, canonical: str, title: str) -> str:
         "text": record["prompt_text"],
         "inLanguage": "en",
         "headline": heading_for(record),
-        "datePublished": (record["created_at"] or "")[:10] or None,
-        "dateModified": (record["collected_at"] or "")[:10] or None,
+        "datePublished": (iso_datetime(record["created_at"]) or "")[:10] or None,
+        "dateModified": (iso_datetime(record["collected_at"]) or "")[:10] or None,
         "author": {"@type": "Person", "name": record["author"], "url": record["tweet_url"]},
         "creator": {"@type": "Person", "name": record["author"]},
         "creditText": f"@{record['author']} on X",

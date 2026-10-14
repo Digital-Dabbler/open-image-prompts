@@ -79,6 +79,8 @@ def build_dataset(path: Path) -> None:
         ("1004", "bob", "Nano Banana", "short prompt", "2026-09-04T10:00:00Z"),
         # not indexable: no media
         ("1005", "carol", "Midjourney", LONG_PROMPT, "2026-09-05T10:00:00Z"),
+        # video row without an archived file or poster (deleted tweet)
+        ("1006", "dave", "Seedance 2.0", LONG_PROMPT, "2026-09-06T10:00:00Z"),
     ]
     for tweet_id, author, tool, prompt, created in prompts:
         connection.execute(
@@ -109,6 +111,12 @@ def build_dataset(path: Path) -> None:
     connection.execute(
         "INSERT INTO videos VALUES (1,'1003',1,'https://video.twimg.com/v.mp4',"
         "'images/1003/video_1.mp4','images/1003/video_1.jpg')"
+    )
+    connection.execute(
+        "INSERT INTO images VALUES (3,'1006',1,'https://pbs.twimg.com/media/c.jpg','images/1006/1.jpg')"
+    )
+    connection.execute(
+        "INSERT INTO videos VALUES (2,'1006',1,'https://video.twimg.com/gone.mp4','','')"
     )
     connection.commit()
     connection.close()
@@ -203,6 +211,35 @@ class SeoPageTests(unittest.TestCase):
         self.assertEqual(work["video"]["@type"], "VideoObject")
         self.assertTrue(work["video"]["contentUrl"].endswith("/images/1003/video_1.mp4"))
         self.assertTrue(work["video"]["thumbnailUrl"].endswith("/images/1003/video_1.jpg"))
+        # Google requires ISO 8601 (WNC-10030322 follow-up): the raw X date format
+        # used to leak through here.
+        self.assertRegex(work["video"]["uploadDate"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+    def test_posterless_video_row_emits_no_video_object(self) -> None:
+        # A row with neither an archived video nor a poster (deleted tweet,
+        # expired source) must not ship a VideoObject: it would lack the required
+        # thumbnailUrl and its contentUrl would be dead.
+        page = self.read("p/1006/index.html")
+        graph = json.loads(
+            re.search(r'<script type="application/ld\+json">(.*?)</script>', page, re.S).group(1)
+        )["@graph"]
+        work = next(node for node in graph if node["@type"] == "CreativeWork")
+        self.assertNotIn("video", work)
+
+    def test_iso_datetime_converts_the_x_format(self) -> None:
+        output = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0, 'scripts'); import gen_seo_pages as g;"
+                "print(g.iso_datetime('Mon Jul 18 07:49:08 +0000 2026'))",
+            ],
+            cwd=str(REPOSITORY_ROOT),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(output, "2026-07-18T07:49:08+00:00")
 
     def test_local_media_paths_are_not_double_prefixed(self) -> None:
         for relative in ("p/1001/index.html", "p/1003/index.html"):
