@@ -451,6 +451,10 @@ def iso_datetime(value: str | None) -> str:
     raw = (value or "").strip()
     if not raw:
         return ""
+    try:
+        return datetime.fromisoformat(raw).isoformat()
+    except ValueError:
+        pass
     for pattern in ("%a %b %d %H:%M:%S %z %Y", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
         try:
             return datetime.strptime(raw, pattern).isoformat()
@@ -544,13 +548,19 @@ def detail_structured(record: dict, canonical: str, title: str) -> str:
                     break
         if not thumbnail:
             continue
+        # uploadDate is required too: fall back to the collection time when the
+        # tweet date was never captured, and emit no VideoObject when neither
+        # exists (Google marks a missing uploadDate as a critical issue).
+        upload_date = iso_datetime(record["created_at"]) or iso_datetime(record["collected_at"])
+        if not upload_date:
+            continue
         node = {
             "@type": "VideoObject",
             "name": title,
             "description": clamp(record["translation"] or record["prompt_text"], 200),
             "contentUrl": src,
             "thumbnailUrl": thumbnail,
-            "uploadDate": iso_datetime(record["created_at"]),
+            "uploadDate": upload_date,
         }
         videos.append({key: value for key, value in node.items() if value})
     work = {

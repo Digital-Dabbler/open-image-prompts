@@ -118,6 +118,28 @@ def build_dataset(path: Path) -> None:
     connection.execute(
         "INSERT INTO videos VALUES (2,'1006',1,'https://video.twimg.com/gone.mp4','','')"
     )
+    # video whose tweet date was never captured: uploadDate must fall back to the
+    # collection time (Google requires the field)
+    connection.execute(
+        "INSERT INTO prompts VALUES ('1007','erin','Seedance 2.0',?,?,?,?)",
+        (
+            LONG_PROMPT,
+            "",
+            "https://x.com/erin/status/1007",
+            "2026-09-07T10:00:00+00:00",
+        ),
+    )
+    connection.execute(
+        "INSERT INTO prompt_translations VALUES ('1007','zh-Hans','中文译文 1007','oip-visual-v2')"
+    )
+    connection.execute("INSERT INTO prompt_labels VALUES ('1007',1,1.0,'oip-visual-v2')")
+    connection.execute(
+        "INSERT INTO images VALUES (4,'1007',1,'https://pbs.twimg.com/media/d.jpg','images/1007/1.jpg')"
+    )
+    connection.execute(
+        "INSERT INTO videos VALUES (3,'1007',1,'https://video.twimg.com/d.mp4',"
+        "'images/1007/video_1.mp4','images/1007/video_1.jpg')"
+    )
     connection.commit()
     connection.close()
 
@@ -225,6 +247,16 @@ class SeoPageTests(unittest.TestCase):
         )["@graph"]
         work = next(node for node in graph if node["@type"] == "CreativeWork")
         self.assertNotIn("video", work)
+
+    def test_video_without_tweet_date_falls_back_to_collection_time(self) -> None:
+        # Google requires uploadDate: a record whose created_at was never
+        # captured must still ship one instead of dropping the field.
+        page = self.read("p/1007/index.html")
+        graph = json.loads(
+            re.search(r'<script type="application/ld\+json">(.*?)</script>', page, re.S).group(1)
+        )["@graph"]
+        work = next(node for node in graph if node["@type"] == "CreativeWork")
+        self.assertEqual(work["video"]["uploadDate"], "2026-09-07T10:00:00+00:00")
 
     def test_iso_datetime_converts_the_x_format(self) -> None:
         output = subprocess.run(
