@@ -6,6 +6,10 @@
   <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a>
 </p>
 
+<p align="center">
+  <a href="https://openimages.ajiang.me/"><img src="./assets/readme/screenshot-grid.png" width="100%" alt="Open Image Prompts — gallery, model collection, prompt detail and site index"></a>
+</p>
+
 # Open Image Prompts
 
 An open, local-first visual prompt archive with two installable Agent Skills:
@@ -16,7 +20,7 @@ An open, local-first visual prompt archive with two installable Agent Skills:
 Working through a coding agent? [AGENTS.md](./AGENTS.md) is the condensed setup,
 port, and Skill contract.
 
-The public dataset contains **21,153 source prompts**, **35,877 images**, **42,302 translations**, **247,855 active v2 prompt labels**, and a closed taxonomy of **185 visual labels**. Labeling models, backfill tools, provider configuration, test runs, error logs, and other labeling-process records are not included. These counts are checked against `data/public-corpus.json` by `npm run verify:docs`.
+The public dataset contains **21,159 source prompts**, **35,889 images**, **42,316 translations**, **247,939 active v2 prompt labels**, and a closed taxonomy of **185 visual labels**. Labeling models, backfill tools, provider configuration, test runs, error logs, and other labeling-process records are not included. These counts are checked against `data/public-corpus.json` by `npm run verify:docs`.
 
 Dataset assets ship through [GitHub Releases](https://github.com/NanmiCoder/open-image-prompts/releases) instead of Git LFS: the repository clone stays small, and `scripts/fetch_dataset.py` downloads the SQLite archive (~80 MB) plus optional monthly image packs (~4.3 GB total) with sha256 verification. See `data/dataset-manifest.json` for the exact asset list.
 
