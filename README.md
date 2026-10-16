@@ -24,7 +24,15 @@ The public dataset contains **21,176 source prompts**, **35,905 images**, **42,3
 
 Dataset assets ship through [GitHub Releases](https://github.com/NanmiCoder/open-image-prompts/releases) instead of Git LFS: the repository clone stays small, and `scripts/fetch_dataset.py` downloads the SQLite archive (~80 MB) plus optional monthly image packs (~4.3 GB total) with sha256 verification. See `data/dataset-manifest.json` for the exact asset list.
 
-**Videos.** The published packs carry images and each video's poster frame, not the video files themselves (2,079 clips would add roughly 8.8 GB). A video row points at `images/<tweet_id>/video_1.mp4`; when that file is absent the player falls back to the original X URL — which needs reachable access to `video.twimg.com`, expires over time and blocks hotlinked playback. A fresh clone therefore shows the poster but cannot play the clip, and the gallery now says exactly that instead of failing silently. Offline playback needs the clips on disk: optional monthly video packs are published on the same Releases page and extract into `images/` exactly like the image packs.
+**Videos.** The published packs carry images and each video's poster frame, not the video files themselves (2,061 clips would add roughly 8.8 GB). A video row points at `images/<tweet_id>/video_<index>.mp4`; when that file is absent the gallery falls back to the original X URL, which mainland networks cannot reach, expires over time and blocks hotlinked playback — so a fresh clone shows the poster but cannot play the clip, and the gallery says exactly that instead of failing silently.
+
+Pull the clips yourself when you want offline playback. `scripts/fetch_videos.py` reads every video row, downloads the clip from its original source and writes it to exactly the path the database points at — row by row, so a clip can never land in another tweet's directory:
+
+    python3 scripts/fetch_videos.py --dry-run      # plan only
+    python3 scripts/fetch_videos.py --limit 20     # smoke-test a few clips
+    python3 scripts/fetch_videos.py                # everything still missing (~8.8 GB)
+
+It needs reachable access to `video.twimg.com`: run it on a machine outside mainland China (a VPS or workstation, or with a VPN) or hand it a proxy with `--proxy http://host:port` (it also honors `HTTPS_PROXY`). Re-running costs nothing — files that are already valid are skipped, interrupted downloads resume from the kept `.part`, and `--report failures.json` records what still failed so a later run can retry just those. `AGENTS.md` documents the same flow as an agent setup step.
 
 ## Repository vs. dataset assets
 

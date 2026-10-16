@@ -23,7 +23,15 @@
 
 数据资产通过 [GitHub Releases](https://github.com/NanmiCoder/open-image-prompts/releases) 分发（不再使用 Git LFS）：仓库克隆保持轻量，`scripts/fetch_dataset.py` 会下载 SQLite 归档（约 80 MB）以及可选的按月图片包（合计约 4.3 GB），并做 sha256 校验。完整资产清单见 `data/dataset-manifest.json`。
 
-**视频。** 发布的媒体包包含图片和每条视频的封面帧，但不含视频文件本身（2,079 条约 8.8 GB）。数据库里的视频行指向 `images/<tweet_id>/video_1.mp4`；文件缺失时播放器会回退到 X 的原始地址 —— 这需要能访问 `video.twimg.com`，而该地址会过期、并且常禁止浏览器热链播放。所以新克隆的仓库能看到封面却放不出视频，画廊现在会明确提示，而不是静默失败。想要离线播放需要本地有视频文件：可选的按月视频包会在同一个 Releases 页面发布，下载解包进 `images/` 的方式与图片包完全一致。
+**视频。** 发布的媒体包包含图片和每条视频的封面帧，但不含视频文件本身（2,061 条约 8.8 GB）。数据库里的视频行指向 `images/<tweet_id>/video_<index>.mp4`；文件缺失时画廊会回退到 X 的原始地址 —— 而该地址国内网络访问不了、会过期、还常禁止浏览器热链播放。所以新克隆的仓库能看到封面却放不出视频（画廊现在会明确提示，而不是静默失败）。
+
+想要离线播放，就自己把视频拉下来。`scripts/fetch_videos.py` 会读取每一条视频行，从原始来源下载，并写到**数据库指定的那个路径**上 —— 逐行配对，绝不会把某个视频落到另一条推文的目录里：
+
+    python3 scripts/fetch_videos.py --dry-run      # 只看计划
+    python3 scripts/fetch_videos.py --limit 20     # 先试 20 条
+    python3 scripts/fetch_videos.py                # 补齐全部（约 8.8 GB）
+
+它需要能访问 `video.twimg.com`：请在墙外机器（VPS / 本机挂 VPN）上跑，或用 `--proxy http://host:port`（也认 `HTTPS_PROXY`）传代理。重复跑不浪费 —— 已存在且合法的文件会跳过、断点续传保留 `.part`、`--report failures.json` 会记录失败的条目以便只重试那些。同样的流程在 `AGENTS.md` 里写成了给 Agent 用的安装步骤。
 
 ## 代码仓库和数据集的关系
 
