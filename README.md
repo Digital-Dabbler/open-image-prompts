@@ -24,6 +24,8 @@ The public dataset contains **21,176 source prompts**, **35,905 images**, **42,3
 
 Dataset assets ship through [GitHub Releases](https://github.com/NanmiCoder/open-image-prompts/releases) instead of Git LFS: the repository clone stays small, and `scripts/fetch_dataset.py` downloads the SQLite archive (~80 MB) plus optional monthly image packs (~4.3 GB total) with sha256 verification. See `data/dataset-manifest.json` for the exact asset list.
 
+**Videos.** The published packs carry images and each video's poster frame, not the video files themselves (2,079 clips would add roughly 8.8 GB). A video row points at `images/<tweet_id>/video_1.mp4`; when that file is absent the player falls back to the original X URL — which needs reachable access to `video.twimg.com`, expires over time and blocks hotlinked playback. A fresh clone therefore shows the poster but cannot play the clip, and the gallery now says exactly that instead of failing silently. Offline playback needs the clips on disk: optional monthly video packs are published on the same Releases page and extract into `images/` exactly like the image packs.
+
 ## Repository vs. dataset assets
 
 This repository tracks the application code, frontend, API, Skills, taxonomy, and small dataset indexes. It intentionally does **not** commit the SQLite database or image files into Git history. Runtime data is downloaded from GitHub Releases into your local checkout:

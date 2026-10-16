@@ -23,6 +23,8 @@
 
 数据资产通过 [GitHub Releases](https://github.com/NanmiCoder/open-image-prompts/releases) 分发（不再使用 Git LFS）：仓库克隆保持轻量，`scripts/fetch_dataset.py` 会下载 SQLite 归档（约 80 MB）以及可选的按月图片包（合计约 4.3 GB），并做 sha256 校验。完整资产清单见 `data/dataset-manifest.json`。
 
+**视频。** 发布的媒体包包含图片和每条视频的封面帧，但不含视频文件本身（2,079 条约 8.8 GB）。数据库里的视频行指向 `images/<tweet_id>/video_1.mp4`；文件缺失时播放器会回退到 X 的原始地址 —— 这需要能访问 `video.twimg.com`，而该地址会过期、并且常禁止浏览器热链播放。所以新克隆的仓库能看到封面却放不出视频，画廊现在会明确提示，而不是静默失败。想要离线播放需要本地有视频文件：可选的按月视频包会在同一个 Releases 页面发布，下载解包进 `images/` 的方式与图片包完全一致。
+
 ## 代码仓库和数据集的关系
 
 这个仓库本身只跟踪代码、前端、API、Skills、taxonomy 和轻量索引文件，不直接把数据库和图片提交进 Git 历史。实际数据通过 GitHub Releases 下载到本地 checkout：

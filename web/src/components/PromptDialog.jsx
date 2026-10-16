@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
 import { mediaItems } from '../media'
-import { promptShareUrl, sharePrompt } from '../share'
+import { promptShareUrl, sharePrompt, SHARE_ORIGIN } from '../share'
 import SmartImage from './ui/SmartImage'
 import SmartVideo from './ui/SmartVideo'
 
@@ -147,6 +147,7 @@ export default function PromptDialog({ item, position, total, onClose, onStep, o
               <SmartVideo
                 sources={currentMedia.sources}
                 poster={currentMedia.poster}
+                fallbackHref={promptShareUrl(item.tweet_id, SHARE_ORIGIN)}
                 alt={`${mediaLabel(currentMedia, currentIndex)} — @${item.author}`}
                 className="relative h-full w-full"
                 controls
