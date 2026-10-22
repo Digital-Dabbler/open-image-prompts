@@ -119,11 +119,11 @@
     },
     {
       "asset": "images-2026-10.tar.gz",
-      "tag": "dataset-2026-10-22-0858",
-      "sha256": "3596fa8a4ffb811f5cf694fee03d84ffd11c7e02832e2f5a2e8c571c7efe2f35",
-      "bytes": 338962655,
-      "files": 1692,
-      "signature": "b69ebfe1552fad5f30f57f3e4b437687d8aae5b9f7088a31b94eafdb6357a1fc"
+      "tag": "dataset-2026-10-22-0609",
+      "sha256": "56a2d9addc2c75946eb0703ad42e6e9cf862e33cbeff22a6ec42602e6f58fa4a",
+      "bytes": 337686115,
+      "files": 1686,
+      "signature": "47661ab088c94dd5bb093a0284e38733150f89ac368bf5f76984cae03c1f9d0c"
     }
   ],
   "images_total": 34142,
