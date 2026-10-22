@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
 import { firstImageSources, assetUrl, videoSources } from '../media'
+import { SHARE_ORIGIN, promptShareUrl } from '../share'
 import SmartImage from './ui/SmartImage'
 import SmartVideo from './ui/SmartVideo'
 
@@ -90,6 +91,7 @@ export default function PromptCard({ item, index, onSelect, onCopied }) {
           <SmartVideo
             sources={previewVideo.sources}
             poster={previewVideo.video.poster ? assetUrl(previewVideo.video.poster) : null}
+            fallbackHref={promptShareUrl(item.tweet_id, SHARE_ORIGIN)}
             alt={t('card.alt', { author: item.author })}
             className={`h-full w-full ${ratio ? '' : 'aspect-[4/5]'}`}
             playing={videoPlaying}

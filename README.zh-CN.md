@@ -6,6 +6,10 @@
   <a href="./README.md">English</a> · <strong>简体中文</strong>
 </p>
 
+<p align="center">
+  <a href="https://openimages.ajiang.me/"><img src="./assets/readme/screenshot-grid.png" width="100%" alt="Open Image Prompts —— 首页画廊、模型合集、提示词详情与全站索引"></a>
+</p>
+
 # Open Image Prompts
 
 一个开源、本地优先的视觉提示词资料库，并提供两个可以安装到智能体中的 Skill：
@@ -15,9 +19,19 @@
 
 用编程智能体接入？[AGENTS.md](./AGENTS.md) 是精简版的安装、端口与 Skill 约定说明。
 
-公开数据集包含 **21,130 条来源提示词**、**35,989 张图片**、**42,254 条翻译**、**245,321 条有效 v2 提示词标签**和 **185 个封闭视觉标签**。打标模型、回填工具、供应商配置、测试批次、错误日志以及其他打标过程记录均不在公开仓库中。以上数字由 `npm run verify:docs` 与 `data/public-corpus.json` 对账。
+公开数据集包含 **21,565 条来源提示词**、**36,423 张图片**、**43,104 条翻译**、**252,499 条有效 v2 提示词标签**和 **185 个封闭视觉标签**。打标模型、回填工具、供应商配置、测试批次、错误日志以及其他打标过程记录均不在公开仓库中。以上数字由 `npm run verify:docs` 与 `data/public-corpus.json` 对账。
 
 数据资产通过 [GitHub Releases](https://github.com/NanmiCoder/open-image-prompts/releases) 分发（不再使用 Git LFS）：仓库克隆保持轻量，`scripts/fetch_dataset.py` 会下载 SQLite 归档（约 80 MB）以及可选的按月图片包（合计约 4.3 GB），并做 sha256 校验。完整资产清单见 `data/dataset-manifest.json`。
+
+**视频。** 发布的媒体包包含图片和每条视频的封面帧，但不含视频文件本身（2,061 条约 8.8 GB）。数据库里的视频行指向 `images/<tweet_id>/video_<index>.mp4`；文件缺失时画廊会回退到 X 的原始地址 —— 而该地址国内网络访问不了、会过期、还常禁止浏览器热链播放。所以新克隆的仓库能看到封面却放不出视频（画廊现在会明确提示，而不是静默失败）。
+
+想要离线播放，就自己把视频拉下来。`scripts/fetch_videos.py` 会读取每一条视频行，从原始来源下载，并写到**数据库指定的那个路径**上 —— 逐行配对，绝不会把某个视频落到另一条推文的目录里：
+
+    python3 scripts/fetch_videos.py --dry-run      # 只看计划
+    python3 scripts/fetch_videos.py --limit 20     # 先试 20 条
+    python3 scripts/fetch_videos.py                # 补齐全部（约 8.8 GB）
+
+它需要能访问 `video.twimg.com`：请在墙外机器（VPS / 本机挂 VPN）上跑，或用 `--proxy http://host:port`（也认 `HTTPS_PROXY`）传代理。重复跑不浪费 —— 已存在且合法的文件会跳过、断点续传保留 `.part`、`--report failures.json` 会记录失败的条目以便只重试那些。同样的流程在 `AGENTS.md` 里写成了给 Agent 用的安装步骤。
 
 ## 代码仓库和数据集的关系
 

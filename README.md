@@ -6,6 +6,10 @@
   <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a>
 </p>
 
+<p align="center">
+  <a href="https://openimages.ajiang.me/"><img src="./assets/readme/screenshot-grid.png" width="100%" alt="Open Image Prompts — gallery, model collection, prompt detail and site index"></a>
+</p>
+
 # Open Image Prompts
 
 An open, local-first visual prompt archive with two installable Agent Skills:
@@ -16,9 +20,19 @@ An open, local-first visual prompt archive with two installable Agent Skills:
 Working through a coding agent? [AGENTS.md](./AGENTS.md) is the condensed setup,
 port, and Skill contract.
 
-The public dataset contains **21,130 source prompts**, **35,989 images**, **42,254 translations**, **245,321 active v2 prompt labels**, and a closed taxonomy of **185 visual labels**. Labeling models, backfill tools, provider configuration, test runs, error logs, and other labeling-process records are not included. These counts are checked against `data/public-corpus.json` by `npm run verify:docs`.
+The public dataset contains **21,565 source prompts**, **36,423 images**, **43,104 translations**, **252,499 active v2 prompt labels**, and a closed taxonomy of **185 visual labels**. Labeling models, backfill tools, provider configuration, test runs, error logs, and other labeling-process records are not included. These counts are checked against `data/public-corpus.json` by `npm run verify:docs`.
 
 Dataset assets ship through [GitHub Releases](https://github.com/NanmiCoder/open-image-prompts/releases) instead of Git LFS: the repository clone stays small, and `scripts/fetch_dataset.py` downloads the SQLite archive (~80 MB) plus optional monthly image packs (~4.3 GB total) with sha256 verification. See `data/dataset-manifest.json` for the exact asset list.
+
+**Videos.** The published packs carry images and each video's poster frame, not the video files themselves (2,061 clips would add roughly 8.8 GB). A video row points at `images/<tweet_id>/video_<index>.mp4`; when that file is absent the gallery falls back to the original X URL, which mainland networks cannot reach, expires over time and blocks hotlinked playback — so a fresh clone shows the poster but cannot play the clip, and the gallery says exactly that instead of failing silently.
+
+Pull the clips yourself when you want offline playback. `scripts/fetch_videos.py` reads every video row, downloads the clip from its original source and writes it to exactly the path the database points at — row by row, so a clip can never land in another tweet's directory:
+
+    python3 scripts/fetch_videos.py --dry-run      # plan only
+    python3 scripts/fetch_videos.py --limit 20     # smoke-test a few clips
+    python3 scripts/fetch_videos.py                # everything still missing (~8.8 GB)
+
+It needs reachable access to `video.twimg.com`: run it on a machine outside mainland China (a VPS or workstation, or with a VPN) or hand it a proxy with `--proxy http://host:port` (it also honors `HTTPS_PROXY`). Re-running costs nothing — files that are already valid are skipped, interrupted downloads resume from the kept `.part`, and `--report failures.json` records what still failed so a later run can retry just those. `AGENTS.md` documents the same flow as an agent setup step.
 
 ## Repository vs. dataset assets
 

@@ -1,5 +1,10 @@
 User-agent: *
 Allow: /
+# Legacy pre-render URLs (?p=<tweet_id>) are 301-redirected to /p/<id>/ by the
+# server, so crawlers must be allowed to fetch them and see the redirect. The
+# longer Allow rule wins over the blanket query-string block below (Google uses
+# the most specific matching rule).
+Allow: /*?p=
 Disallow: /api/
 Disallow: /db/
 Disallow: /health

@@ -120,6 +120,10 @@ export const dict = {
 
     'image.unavailable': 'Image unavailable',
 
+    'video.unavailable': 'Video unavailable',
+    'video.unavailable.hint': 'The dataset build you are running ships no video file for this post.',
+    'video.unavailable.link': 'Watch it on openimages.ajiang.me',
+
     'footer.tagline': 'Discover great images · Copy better prompts · Create your own',
     'footer.mark': 'Open source — 2026',
   },
@@ -235,6 +239,10 @@ export const dict = {
     'archive.error.generic': '无法读取档案数据',
 
     'image.unavailable': '图像暂不可用',
+
+    'video.unavailable': '视频暂不可用',
+    'video.unavailable.hint': '本次数据集未包含这条视频的文件，本地播放器也无法直连原始来源。',
+    'video.unavailable.link': '到 openimages.ajiang.me 观看',
 
     'footer.tagline': '看好图 · 找灵感 · 复制提示词 · 生成自己的作品',
     'footer.mark': 'Open source — 2026',

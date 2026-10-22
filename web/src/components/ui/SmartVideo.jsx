@@ -20,16 +20,19 @@ export default function SmartVideo({
   muted = true,
   eager = false,
   fit = 'contain',
+  fallbackHref = null,
   onFailed,
 }) {
   const { t } = useLang()
   const availableSources = useMemo(() => [...new Set((sources || []).filter(Boolean))], [sources])
   const sourceKey = availableSources.join('|')
   const [sourceIndex, setSourceIndex] = useState(0)
+  const [failed, setFailed] = useState(false)
   const videoRef = useRef(null)
 
   useEffect(() => {
     setSourceIndex(0)
+    setFailed(false)
   }, [sourceKey])
 
   const source = availableSources[sourceIndex]
@@ -46,12 +49,18 @@ export default function SmartVideo({
     }
   }, [playing, source, controls])
 
-  if (!source) {
+  if (!source || failed) {
     return (
       <div className={`grid place-items-center bg-surface text-faint ${className}`} aria-label={alt}>
-        <div className="flex flex-col items-center gap-2 text-xs">
+        <div className="flex flex-col items-center gap-2 px-3 text-center text-xs">
           <ImageBroken size={24} />
-          <span>{t('image.unavailable')}</span>
+          <span>{failed ? t('video.unavailable') : t('image.unavailable')}</span>
+          {failed && <span className="text-[11px] leading-snug opacity-70">{t('video.unavailable.hint')}</span>}
+          {failed && fallbackHref && (
+            <a href={fallbackHref} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-text">
+              {t('video.unavailable.link')}
+            </a>
+          )}
         </div>
       </div>
     )
@@ -72,6 +81,7 @@ export default function SmartVideo({
         if (sourceIndex < availableSources.length - 1) {
           setSourceIndex((index) => index + 1)
         } else {
+          setFailed(true)
           onFailed?.()
         }
       }}
