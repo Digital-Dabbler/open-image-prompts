@@ -20,5 +20,3 @@ db/prompts.db.gz
 # Cloudflare R2 credentials live outside the repo; never commit a copy.
 **/r2.env
 
-# 本机自启/控制台工具（本地定制，不属于上游项目）
-tools/oip-daemon/

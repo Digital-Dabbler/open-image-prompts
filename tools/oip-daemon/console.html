@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OIP 画廊控制台</title>
+<style>
+  :root {
+    --bg: #09090b;
+    --canvas: #0e0e11;
+    --card: #141419;
+    --elevate: #1b1b21;
+    --ink: #f4f3ee;
+    --body: #b8b7b0;
+    --muted: #84837c;
+    --faint: #5a5954;
+    --line: rgba(244, 243, 238, 0.09);
+    --line-strong: rgba(244, 243, 238, 0.16);
+    --brass: #e2a75b;
+    --brass-strong: #f0bd76;
+    --brass-soft: rgba(226, 167, 91, 0.14);
+    --ok: #86c9a0;
+    --ok-soft: rgba(134, 201, 160, 0.13);
+    --err: #e0705c;
+    --err-soft: rgba(224, 112, 92, 0.13);
+    --sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: "IBM Plex Mono", "Cascadia Code", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 420px at 12% -8%, rgba(226, 167, 91, 0.07), transparent 60%),
+      var(--bg);
+    color: var(--body);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px 40px;
+  }
+  .shell { width: min(720px, 100%); }
+  header { margin-bottom: 22px; }
+  .title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--ink);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .sub { margin-top: 8px; color: var(--muted); font-size: 13px; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--line-strong);
+    color: var(--muted);
+    background: var(--elevate);
+  }
+  .badge::before {
+    content: "";
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .badge.on { color: var(--ok); background: var(--ok-soft); border-color: rgba(134, 201, 160, 0.3); }
+  .badge.off { color: var(--muted); }
+  .badge.err { color: var(--err); background: var(--err-soft); border-color: rgba(224, 112, 92, 0.3); }
+  .badge.busy { color: var(--brass); background: var(--brass-soft); border-color: rgba(226, 167, 91, 0.3); }
+  .badge.busy::before { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px 22px 20px;
+    margin-bottom: 14px;
+  }
+  .statusline { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .big { color: var(--ink); font-size: 19px; font-weight: 600; }
+  .uptime { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .urlrow { margin-top: 10px; }
+  .urlrow a {
+    color: var(--brass);
+    font-family: var(--mono);
+    font-size: 13px;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  .urlrow a:hover { border-color: var(--brass); }
+  .urlrow a.dead { color: var(--faint); pointer-events: none; }
+
+  dl.meta {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 18px 0 0;
+    padding: 14px 0 0;
+    border-top: 1px solid var(--line);
+  }
+  dl.meta dt { color: var(--faint); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+  dl.meta dd { margin: 5px 0 0; color: var(--ink); font-size: 13px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .btn {
+    appearance: none;
+    border: 1px solid var(--line-strong);
+    background: var(--elevate);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 9px 16px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--brass); color: var(--brass-strong); }
+  .btn:disabled { opacity: 0.38; cursor: default; }
+  .btn.primary {
+    background: var(--brass);
+    border-color: var(--brass);
+    color: #1a1207;
+    font-weight: 600;
+  }
+  .btn.primary:hover:not(:disabled) { background: var(--brass-strong); border-color: var(--brass-strong); color: #1a1207; }
+  .btn.small { padding: 6px 12px; font-size: 12px; }
+
+  .notice { margin: 14px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); min-height: 1em; }
+  .notice.err { color: var(--err); }
+  .notice.warn { color: var(--brass); }
+
+  .switchrow { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .label { color: var(--ink); font-size: 14px; font-weight: 500; }
+  .hint { margin-top: 6px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  .path {
+    margin: 14px 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    color: var(--faint);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    word-break: break-all;
+  }
+  .switch { position: relative; display: inline-block; flex: none; }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .track {
+    display: block;
+    width: 46px; height: 26px;
+    border-radius: 999px;
+    background: var(--elevate);
+    border: 1px solid var(--line-strong);
+    transition: background 0.18s ease, border-color 0.18s ease;
+    cursor: pointer;
+    position: relative;
+  }
+  .thumb {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: transform 0.18s cubic-bezier(0.33, 1, 0.68, 1), background 0.18s ease;
+  }
+  .switch input:checked + .track { background: var(--brass-soft); border-color: rgba(226, 167, 91, 0.45); }
+  .switch input:checked + .track .thumb { transform: translateX(20px); background: var(--brass); }
+  .switch input:disabled + .track { opacity: 0.5; cursor: default; }
+
+  .logs details { border: 0; }
+  .logs summary {
+    cursor: pointer;
+    color: var(--body);
+    font-size: 13px;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logs summary::-webkit-details-marker { display: none; }
+  .logs summary::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-right: 1.5px solid var(--muted);
+    border-bottom: 1.5px solid var(--muted);
+    transform: rotate(-45deg);
+    transition: transform 0.15s ease;
+    margin-left: 2px;
+  }
+  .logs details[open] summary::before { transform: rotate(45deg); }
+  .logs pre {
+    margin: 14px 0 0;
+    padding: 14px;
+    max-height: 320px;
+    overflow: auto;
+    background: var(--canvas);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--body);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .logs pre .errline { color: var(--err); }
+  .logactions { display: flex; gap: 8px; margin-top: 12px; }
+
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 18px;
+    padding: 0 4px;
+    color: var(--faint);
+    font-size: 11.5px;
+    font-family: var(--mono);
+  }
+  .linkbtn {
+    appearance: none;
+    border: 0;
+    background: none;
+    color: var(--faint);
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+    border-bottom: 1px solid transparent;
+  }
+  .linkbtn:hover { color: var(--err); border-color: currentColor; }
+  .done { padding: 60px 0; text-align: center; color: var(--muted); font-size: 14px; line-height: 2; }
+  .done strong { color: var(--ink); font-weight: 500; }
+
+  @media (max-width: 560px) {
+    body { padding-top: 28px; }
+    dl.meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="title">OIP 画廊控制台 <span class="badge" id="badge">读取中</span></div>
+    <div class="sub" id="sub">正在读取状态…</div>
+  </header>
+
+  <section class="card">
+    <div class="statusline">
+      <div class="big" id="phase">—</div>
+      <div class="uptime" id="uptime"></div>
+    </div>
+    <div class="urlrow"><a id="url" href="#" target="_blank" rel="noreferrer">—</a></div>
+
+    <dl class="meta">
+      <div><dt>PID</dt><dd id="pid">—</dd></div>
+      <div><dt>端口</dt><dd id="port">—</dd></div>
+      <div><dt>启动于</dt><dd id="started">—</dd></div>
+      <div><dt>数据接口</dt><dd id="health">—</dd></div>
+    </dl>
+
+    <div class="actions">
+      <button class="btn primary" id="open">打开画廊</button>
+      <button class="btn" id="start">启动</button>
+      <button class="btn" id="stop">停止</button>
+      <button class="btn" id="restart">重启</button>
+    </div>
+    <p class="notice" id="notice"></p>
+  </section>
+
+  <section class="card">
+    <div class="switchrow">
+      <div>
+        <div class="label">开机自动启动</div>
+        <div class="hint">登录 Windows 后自动在后台启动，不弹任何窗口。关掉即取消，画廊下次开机就不再自启。</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autostart" />
+        <span class="track"><span class="thumb"></span></span>
+      </label>
+    </div>
+    <p class="path" id="startupPath"></p>
+  </section>
+
+  <section class="card logs">
+    <details id="logBox">
+      <summary>运行日志 <span class="sub" id="logMeta" style="margin:0"></span></summary>
+      <pre id="logPre"></pre>
+      <div class="logactions">
+        <button class="btn small" id="copyPath">复制日志路径</button>
+        <button class="btn small" id="copyErr">复制最后一条错误</button>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    <span>控制台 127.0.0.1:<span id="cport">—</span> · PID <span id="cpid">—</span></span>
+    <button class="linkbtn" id="quit">退出控制台</button>
+  </footer>
+</div>
+
+<script>
+const el = (id) => document.getElementById(id);
+let status = null;
+let busy = false;
+let logLines = [];
+
+function fmtDuration(seconds) {
+  if (!seconds || seconds < 5) return '';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d) return `已运行 ${d} 天 ${h} 小时`;
+  if (h) return `已运行 ${h} 小时 ${m} 分`;
+  if (m) return `已运行 ${m} 分`;
+  return `已运行 ${seconds} 秒`;
+}
+
+function fmtClock(iso) {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+const PHASE_TEXT = {
+  running: '运行中',
+  stopped: '已停止',
+  starting: '正在启动',
+  initiated: '正在启动',
+  blocked: '端口被占用',
+  error: '启动失败',
+};
+
+function render() {
+  if (!status) return;
+  const gallery = status.gallery;
+  const badge = el('badge');
+  const running = gallery.phase === 'running';
+  const failed = gallery.phase === 'error' || gallery.phase === 'blocked';
+  badge.className = 'badge ' + (running ? 'on' : failed ? 'err' : gallery.phase === 'starting' ? 'busy' : 'off');
+  badge.textContent = PHASE_TEXT[gallery.phase] || gallery.phase;
+
+  el('phase').textContent = running
+    ? '画廊正在运行'
+    : failed ? '画廊没有运行'
+    : gallery.phase === 'starting' ? '画廊正在启动…'
+    : '画廊处于停止状态';
+  el('sub').textContent = running
+    ? (gallery.external ? '这个实例不是从控制台启动的，仍可正常停止和重启。' : '画廊在后台独立运行，关掉这个页面、退出控制台都不会影响它。')
+    : '需要时点「启动」，或用桌面快捷方式打开本控制台。';
+  el('uptime').textContent = running ? fmtDuration(gallery.uptimeSec) : '';
+
+  const url = el('url');
+  url.textContent = gallery.url;
+  url.href = gallery.url;
+  url.className = running ? '' : 'dead';
+
+  el('pid').textContent = running ? (gallery.pid ?? '外部') : '—';
+  el('port').textContent = gallery.port;
+  el('started').textContent = running ? fmtClock(gallery.startedAt) : '—';
+  el('health').textContent = gallery.health?.ok
+    ? `正常 · 缓存 ${gallery.health.cache_entries ?? 0}`
+    : '未连接';
+
+  const notice = el('notice');
+  notice.className = 'notice';
+  notice.textContent = '';
+  if (gallery.phase === 'blocked') {
+    notice.className = 'notice err';
+    notice.textContent = `端口 ${gallery.port} 被其他程序占用，画廊起不来。关掉占用它的程序，或告诉我改端口。`;
+  } else if (gallery.phase === 'error' && gallery.lastStart) {
+    notice.className = 'notice err';
+    notice.textContent = `上次启动失败：${gallery.lastStart.message}${gallery.lastStart.detail ? `（${gallery.lastStart.detail}）` : ''}`;
+  } else if (!running && gallery.lastStop?.message) {
+    notice.textContent = gallery.lastStop.message;
+  }
+
+  const auto = el('autostart');
+  auto.checked = Boolean(status.autostart.enabled);
+  auto.disabled = busy;
+  el('startupPath').textContent = `启动项：${status.autostart.path}`;
+
+  el('cport').textContent = status.console.port;
+  el('cpid').textContent = status.console.pid;
+
+  el('open').disabled = busy || !running;
+  el('start').disabled = busy || running;
+  el('stop').disabled = busy || !running;
+  el('restart').disabled = busy || !running;
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { 'x-oip-console': '1', 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  return payload;
+}
+
+async function refresh() {
+  if (document.hidden) return;
+  try {
+    status = await api('/api/status');
+    render();
+    if (el('logBox').open) await loadLogs(true);
+  } catch (error) {
+    el('sub').textContent = `读取状态失败：${error.message}（控制台可能已退出）`;
+  }
+}
+
+async function loadLogs(quiet = false) {
+  try {
+    const data = await api('/api/logs?tail=200');
+    logLines = data.lines.filter((line) => line !== '');
+    const meta = `· ${(data.size / 1024).toFixed(0)} KB · 最近 ${logLines.length} 行`;
+    el('logMeta').textContent = meta;
+    el('logPre').innerHTML = logLines
+      .map((line) => (/error|failed|Traceback|EADDRINUSE|in use/i.test(line)
+        ? `<span class="errline">${line.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</span>`
+        : line.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))))
+      .join('\n');
+    if (el('logPre').scrollTop >= el('logPre').scrollHeight - el('logPre').clientHeight - 40) {
+      el('logPre').scrollTop = el('logPre').scrollHeight;
+    }
+  } catch {
+    if (!quiet) el('logMeta').textContent = '· 读取失败';
+  }
+}
+
+async function act(label, fn, confirmText) {
+  if (busy) return;
+  if (confirmText && !window.confirm(confirmText)) return;
+  busy = true;
+  render();
+  el('sub').textContent = `${label}…`;
+  try {
+    const result = await fn();
+    if (result && result.ok === false) throw new Error(result.error || '操作失败');
+    el('sub').textContent = `${label}完成`;
+  } catch (error) {
+    el('sub').textContent = `${label}失败：${error.message}`;
+  } finally {
+    busy = false;
+    await refresh();
+    if (el('logBox').open) await loadLogs(true);
+  }
+}
+
+el('open').addEventListener('click', () => {
+  if (status?.gallery.phase === 'running') window.open(status.gallery.url, '_blank', 'noreferrer');
+});
+el('start').addEventListener('click', () => act('启动', () => api('/api/gallery/start', { method: 'POST' })));
+el('stop').addEventListener('click', () => act('停止', () => api('/api/gallery/stop', { method: 'POST' }), '停止画廊后，正在浏览的页面会打不开。确定停止吗？'));
+el('restart').addEventListener('click', () => act('重启', () => api('/api/gallery/restart', { method: 'POST' }), '重启会先停止再启动画廊，期间约 3–6 秒无法访问。继续吗？'));
+
+el('autostart').addEventListener('change', async (event) => {
+  const enabled = event.target.checked;
+  event.target.disabled = true;
+  try {
+    await api('/api/autostart', { method: 'POST', body: JSON.stringify({ enabled }) });
+    el('sub').textContent = enabled ? '已开启开机自启' : '已取消开机自启';
+  } catch (error) {
+    event.target.checked = !enabled;
+    el('sub').textContent = `设置失败：${error.message}`;
+  }
+  await refresh();
+});
+
+el('logBox').addEventListener('toggle', () => { if (el('logBox').open) loadLogs(); });
+
+el('copyPath').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(status?.gallery.logPath || ''); el('sub').textContent = '日志路径已复制'; } catch { el('sub').textContent = status?.gallery.logPath || ''; }
+});
+
+el('copyErr').addEventListener('click', async () => {
+  const line = [...logLines].reverse().find((item) => /error|failed|Traceback|EADDRINUSE|in use/i.test(item));
+  try { await navigator.clipboard.writeText(line || '（日志里没有错误行）'); el('sub').textContent = line ? '最后一条错误已复制' : '日志里没有错误行'; } catch { el('sub').textContent = line || '复制失败，请手动查看日志'; }
+});
+
+el('quit').addEventListener('click', async () => {
+  if (!window.confirm('退出控制台后，这个页面就打不开了；画廊仍然继续运行。确定退出控制台吗？')) return;
+  try { await api('/api/console/quit', { method: 'POST' }); } catch { /* 服务先退出也正常 */ }
+  document.querySelector('.shell').innerHTML = '<div class="done"><strong>控制台已退出</strong><br />画廊仍在后台运行，下次需要时再双击桌面快捷方式。<br /><br />' +
+    `<a class="urlrow" style="color:#e2a75b" href="${status?.gallery.url || 'http://127.0.0.1:5173/'}">${status?.gallery.url || 'http://127.0.0.1:5173/'}</a></div>`;
+});
+
+if (location.hash === '#logs') {
+  el('logBox').open = true;
+  loadLogs();
+}
+
+refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>
